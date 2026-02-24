@@ -26,6 +26,10 @@ export const auth = betterAuth({
     },
     changePassword: {},
   },
+   trustedOrigins: [
+    "http://localhost:3000",
+    "https://fuse-aitech.vercel.app"
+  ],
   session: {
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24,
