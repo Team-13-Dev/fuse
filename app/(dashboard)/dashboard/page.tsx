@@ -348,7 +348,7 @@ const Header = () => (
       <ChevronRight className="text-gray-300" />
       <span className="text-gray-500">Dashboard</span>
     </div>
-    <div className="flex items-center space-x-4">
+    <div className="items-center space-x-4 hidden xl:flex">
       <div className="relative">
         <input
           type="text"
@@ -382,7 +382,7 @@ const MainTabs = () => {
   const [activeTab, setActiveTab] = useState("Dashboard");
 
   return (
-    <div className="flex space-x-8 border-b border-gray-200 px-8 bg-white">
+    <div className="hidden lg:flex space-x-8 border-b border-gray-200 px-8 bg-white">
       {tabs.map((tab) => (
         <button
           key={tab}

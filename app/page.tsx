@@ -26,7 +26,7 @@ const NoiseOverlay = () => (
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const { data: session, isPending } = authClient.useSession();
+  const { data: session } = authClient.useSession();
 
 
    useEffect(() => {
@@ -38,7 +38,7 @@ const Navbar = () => {
   }, []);
 
   return (
-    <nav className={` fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? ' backdrop-blur-xl bg-white  text-black py-1 shadow-md' : 'py-1.5 text-white'}`}>
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? ' backdrop-blur-xl bg-white  text-black py-1 shadow-md' : 'py-1.5 text-white'}`}>
           <div className="px-6 h-17 flex justify-between items-center">
             <div className='flex items-center gap-7'>
               <Image src={logo} alt='logo' width={40}/>
@@ -64,11 +64,11 @@ const Navbar = () => {
                   </Link>
                 </div>
               :
-              <div className='flex items-center gap-4'>
-                <Link href="/dashboard">Go To Dashboard</Link>
+              <div className='hidden md:flex items-center gap-4'>
+                <Link href="/dashboard" className='flex items-center gap-1 shadow-sm text-sm px-4 py-1 text-black border-[#E1E1E2] border bg-white rounded-lg'>Go To Dashboard <ArrowUpRight size={18}/></Link>
                 <button onClick={() => signOut()} className='flex items-center gap-1 shadow-sm text-sm px-4 py-1 text-black border-[#E1E1E2] border bg-white rounded-lg hover:opacity-90 duration-300 cursor-pointer'>
                   Sign Out
-                  <LogOut />
+                  <LogOut size={18}/>
                 </button>
               </div>
             }
@@ -82,14 +82,19 @@ const Navbar = () => {
 
           {/* Mobile Menu Dropdown */}
           {isMenuOpen && (
-            <div className="md:hidden absolute w-full bg-white border-b p-6 flex flex-col gap-4">
+            <div className="md:hidden absolute w-full bg-white text-black border-b p-6 flex flex-col gap-4">
               {['Product', 'Solutions', 'Docs', 'Pricing'].map((item) => (
                 <a key={item} href="#" className="text-lg font-normal  hover:text-[#2F46F8]">
                   {item}
                 </a>
               ))}
               <div className="h-px bg-gray-800 my-2"></div>
-              <Link href={"/register"} className="w-full bg-[#2F46F8] text-white py-3 rounded-lg font-bold">Sign Up</Link>
+              {
+                session ?
+                <Link href={"/dashboard"} className="w-full bg-[#2F46F8] text-white py-3 rounded-lg font-bold px-3">Go To Dashboard</Link>
+                :
+                <Link href={"/register"} className="w-full bg-[#2F46F8] text-white py-3 rounded-lg font-bold px-3">Sign Up</Link>
+              }
             </div>
           )}
     </nav>
@@ -108,6 +113,7 @@ const Hero = () => {
     }, containerRef);
     return () => ctx.revert();
   }, []);
+  const { data: session } = authClient.useSession();
 
   return (
     <section ref={containerRef} className="relative h-dvh w-full overflow-hidden bg-[#111111] flex items-end pb-24 md:pb-32">
@@ -130,9 +136,15 @@ const Hero = () => {
             <span className="text-7xl md:text-[11rem] font-drama text-[#E8E4DD] hero-elem mt-2 md:-mt-4">Market.</span>
           </h1>
           <div className="flex flex-col items-start gap-6 hero-elem md:flex-row md:items-center">
-            <Link href={"/register"} className="magnetic-hover cursor-pointer bg-[#2F47F2] text-white px-8 py-4 rounded-full font-bold text-lg uppercase flex items-center gap-2 group">
-              Get Started <ArrowUpRight className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
-            </Link>
+            {
+              session ?
+              <div>
+              </div>
+              :
+              <Link href={"/register"} className="magnetic-hover cursor-pointer bg-[#2F47F2] text-white px-8 py-4 rounded-full font-bold text-lg uppercase flex items-center gap-2 group">
+                Get Started <ArrowUpRight className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+              </Link>
+            }
             <p className="max-w-sm text-sm opacity-80 font-data">
               AI-driven precision growth engine engineered to scale Egypt's leading local operations.
             </p>
@@ -263,14 +275,14 @@ const Features = () => {
   return (
     <section id="features" ref={containerRef} className="py-32 px-6 md:px-12 max-w-7xl mx-auto">
       <div className="mb-16">
-        <h2 className="text-4xl md:text-6xl font-bold uppercase leading-none mb-4">Functional<br/><span className="font-drama text-[#2F47F2]">Artifacts.</span></h2>
+        <h2 className="text-4xl md:text-6xl font-bold uppercase leading-none mb-4">Functional<br/><span className="font-drama text-[#2F47F2]">AI.</span></h2>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         
         <div className="feature-card flex flex-col gap-6 p-8 bg-[#f4f4f4] rounded-[3rem] border border-[#111111]/10 shadow-sm hover:shadow-md transition-shadow">
           <DiagnosticShuffler />
           <div>
-            <h3 className="text-2xl font-bold uppercase mb-2">Diagnostic Shuffler</h3>
+            <h3 className="text-2xl font-bold uppercase mb-2">Diagnostics</h3>
             <p className="text-sm opacity-80 font-data">Instantly uncovers hidden business problems through AI-driven pattern detection.</p>
           </div>
         </div>
@@ -278,7 +290,7 @@ const Features = () => {
         <div className="feature-card flex flex-col gap-6 p-8 bg-[#f4f4f4] rounded-[3rem] border border-[#111111]/10 shadow-sm hover:shadow-md transition-shadow">
           <TelemetryTypewriter />
           <div>
-            <h3 className="text-2xl font-bold uppercase mb-2">Telemetry Typewriter</h3>
+            <h3 className="text-2xl font-bold uppercase mb-2">Use all critical information</h3>
             <p className="text-sm opacity-80 font-data">Transforms raw data into clear, actionable performance insights.</p>
           </div>
         </div>
@@ -286,7 +298,7 @@ const Features = () => {
         <div className="feature-card flex flex-col gap-6 p-8 bg-[#f4f4f4] rounded-[3rem] border border-[#111111]/10 shadow-sm hover:shadow-md transition-shadow">
           <ProtocolScheduler />
           <div>
-            <h3 className="text-2xl font-bold uppercase mb-2">Protocol Scheduler</h3>
+            <h3 className="text-2xl font-bold uppercase mb-2">Plan Strategies</h3>
             <p className="text-sm opacity-80 font-data">Automatically plans optimized strategies that improve growth and efficiency.</p>
           </div>
         </div>
@@ -464,22 +476,18 @@ const Footer = () => (
       <div className="col-span-1 md:col-span-2">
         <h2 className="text-4xl font-bold uppercase font-data mb-4">FUSE</h2>
         <p className="font-data text-sm opacity-60 max-w-sm mb-8">AI-driven pattern detection and performance optimization for Egypt's leading local operations.</p>
-        <div className="inline-flex items-center gap-3 px-4 py-2 border border-white/20 rounded-full font-data text-xs">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-          System Operational
-        </div>
       </div>
       <div className="flex flex-col gap-4 font-data text-sm opacity-80">
         <strong className="uppercase opacity-100 mb-2">Navigation</strong>
-        <a href="#features" className="hover:text-[#E63B2E] transition-colors">Capabilities</a>
-        <a href="#philosophy" className="hover:text-[#E63B2E] transition-colors">Philosophy</a>
-        <a href="#protocol" className="hover:text-[#E63B2E] transition-colors">Protocol</a>
+        <a href="#features" className="hover:text-[#3048F7] transition-colors">Capabilities</a>
+        <a href="#philosophy" className="hover:text-[#3048F7] transition-colors">Philosophy</a>
+        <a href="#protocol" className="hover:text-[#3048F7] transition-colors">Protocol</a>
       </div>
       <div className="flex flex-col gap-4 font-data text-sm opacity-80">
         <strong className="uppercase opacity-100 mb-2">Legal</strong>
-        <a href="#" className="hover:text-[#E63B2E] transition-colors">Privacy Policy</a>
-        <a href="#" className="hover:text-[#E63B2E] transition-colors">Terms of Service</a>
-        <a href="#" className="hover:text-[#E63B2E] transition-colors">Security</a>
+        <a href="#" className="hover:text-[#3048F7] transition-colors">Privacy Policy</a>
+        <a href="#" className="hover:text-[#3048F7] transition-colors">Terms of Service</a>
+        <a href="#" className="hover:text-[#3048F7] transition-colors">Security</a>
       </div>
     </div>
     <div className="max-w-7xl mx-auto border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center text-xs font-data opacity-50">
