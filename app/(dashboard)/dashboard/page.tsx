@@ -265,7 +265,7 @@ const StaticLineChart = () => {
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col lg:flex-row gap-2 justify-between items-center mb-4">
         <h2 className="text-xl font-semibold text-gray-800">Monthly Call Performance Overview</h2>
         <div className="flex space-x-4 text-sm text-gray-600">
           {lines.map((line) => (
