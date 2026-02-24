@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* @layer base {
+  :root {
+    --bg-color: #FFF;
+    --primary: #FFF;
+    --accent: #E63B2E;
+    --dark: #111111;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-['Space_Grotesk',sans-serif];
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+  }
+  
+  .font-drama {
+    @apply font-['DM_Serif_Display',serif] italic;
+  }
+  
+  .font-data {
+    @apply font-['Space_Mono',monospace];
+  }
+}
+
+@layer utilities {
+  .clip-button {
+    clip-path: inset(0 0 0 0 round 999px);
+  }
+  
+  .magnetic-hover {
+    transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  .magnetic-hover:hover {
+    transform: scale(1.03) translateY(-1px);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dark);
+} */
