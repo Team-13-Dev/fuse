@@ -141,7 +141,7 @@ const Hero = () => {
               <div>
               </div>
               :
-              <Link href={"/register"} className="magnetic-hover cursor-pointer bg-[#2F47F2] text-white px-8 py-4 rounded-full font-bold text-lg uppercase flex items-center gap-2 group">
+              <Link href={"/register"} className="magnetic-hover cursor-pointer bg-[#2F47F2] text-white px-8 py-4 rounded-full font-bold text-lg uppercase flex items-center gap-2 group hover:opacity-90 duration-300">
                 Get Started <ArrowUpRight className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
               </Link>
             }

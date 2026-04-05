@@ -1,17 +1,8 @@
 "use client"
-import Image from 'next/image';
-import React, { useState, useEffect } from 'react';
-import logo from "@/public/logo.png"
-import Link from 'next/link';
+import MainTabs from './components/dashboard-main-tabs';
+import Header from './components/dashboard-header';
+import AddProductDialog from '@/app/components/common/AddProductDialog';
 
-
-const MenuIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="3" y1="12" x2="21" y2="12"></line>
-    <line x1="3" y1="6" x2="21" y2="6"></line>
-    <line x1="3" y1="18" x2="21" y2="18"></line>
-  </svg>
-);
 
 const ChartIcon = (props : any) => (
   <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -38,27 +29,6 @@ const CreditCardIcon = (props : any) => (
 const ChevronRight = (props : any) => (
   <svg {...props} xmlns="http://www.w3.org=" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="9 18 15 12 9 6"></polyline>
-  </svg>
-);
-
-const SearchIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8"></circle>
-    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-  </svg>
-);
-
-const BellIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-  </svg>
-);
-
-const UserIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-    <circle cx="12" cy="7" r="4"></circle>
   </svg>
 );
 
@@ -239,7 +209,6 @@ const StaticLineChart = () => {
   const CHART_HEIGHT = 40;
   const CHART_WIDTH = 100;
 
-  // Static data for four distinct lines (Number of Calls, Avg Duration, Credits Spent, etc.)
   const lines = [
     {
       data: "M0 6 C20 6, 30 6, 50 12 S80 18, 100 14", // Purple/Calls
@@ -336,69 +305,6 @@ const StaticLineChart = () => {
 
 // --- Main Layout Components ---
 
-const Header = () => (
-  <header className="flex items-center justify-between p-2 bg-white/80 backdrop-blur-xl border-gray-100 sticky top-0 z-10">
-    <div className="flex items-center space-x-2">
-      <Link href={"/"}>
-        <Image src={logo} alt='logo' width={30}/>
-      </Link>
-      <ChevronRight className="text-gray-300" />
-      <img src="https://placehold.co/20x20/4f46e5/ffffff/png?text=W" alt="Logo" className="rounded-full" />
-      <span className="text-lg font-semibold text-gray-800">Local Business</span>
-      <ChevronRight className="text-gray-300" />
-      <span className="text-gray-500">Dashboard</span>
-    </div>
-    <div className="items-center space-x-4 hidden xl:flex">
-      <div className="relative">
-        <input
-          type="text"
-          placeholder="Search..."
-          className="pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-        />
-        <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-      </div>
-      <BellIcon className="text-gray-500 cursor-pointer hover:text-indigo-600" />
-      <div className="h-8 w-8 bg-indigo-500 rounded-full flex items-center justify-center text-white font-medium cursor-pointer">
-        <UserIcon className="w-4 h-4" />
-      </div>
-    </div>
-  </header>
-);
-
-const MainTabs = () => {
-  const tabs = [
-    "Dashboard",
-    "Transactions",
-    "Reviews & Surveys",
-    "Orders",
-    "Team",
-    "Affiliate Programs",
-    "Integrations",
-    "Products",
-    "Campaigns",
-    "Customers",
-    "Coupons"
-  ];
-  const [activeTab, setActiveTab] = useState("Dashboard");
-
-  return (
-    <div className="hidden lg:flex space-x-8 border-b border-gray-200 px-8 bg-white">
-      {tabs.map((tab) => (
-        <button
-          key={tab}
-          onClick={() => setActiveTab(tab)}
-          className={`py-3 text-sm font-medium transition-all duration-150 ${
-            activeTab === tab
-              ? "text-indigo-600 border-b-2 border-indigo-600"
-              : "text-gray-600 hover:text-gray-900 hover:border-b-2 hover:border-gray-300"
-          }`}
-        >
-          {tab}
-        </button>
-      ))}
-    </div>
-  );
-};
 
 // --- App Component ---
 const App = () => {
@@ -418,22 +324,17 @@ const App = () => {
           ))}
         </div>
 
-        {/* 2. Main Chart and Bottom Panels */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Chart Area (Col Span 8) */}
           <div className="lg:col-span-8">
             <StaticLineChart />
           </div>
 
-          {/* Right Sidebar (Col Span 4) - Simplified */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
               <h3 className="text-xl font-semibold text-gray-800">Quick Actions</h3>
               <p className="text-sm text-gray-500 mt-1">Manage your agents and credits.</p>
               <div className="mt-4 space-y-2">
-                <button className="w-full text-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
-                  Add New Product
-                </button>
+                <AddProductDialog />
                 <button className="w-full text-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
                   Add Coupons
                 </button>

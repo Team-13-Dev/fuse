@@ -59,7 +59,7 @@ export default function SignUpPage() {
       name: data.name,
       email: data.email,
       password: data.password,
-      callbackURL: "/dashboard",
+      callbackURL: "/onboarding",
     });
 
     if (error) {
@@ -68,7 +68,7 @@ export default function SignUpPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push("/onboarding");
     router.refresh();
   };
 
@@ -106,7 +106,7 @@ export default function SignUpPage() {
             <input
               type="text"
               autoComplete="name"
-              placeholder="Jane Smith"
+              placeholder="Enter your full name"
               {...register("name")}
               className={`w-full rounded-lg border px-3 py-2 text-sm outline-none transition
                 ${errors.name
