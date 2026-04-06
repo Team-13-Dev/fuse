@@ -668,8 +668,24 @@ export default function OnboardingPage() {
     else handleSubmit();
   };
 
-  const handleSubmit = () => {
-    console.log({ business, plan, subscription, teamMembers, dataImport });
+  const handleSubmit = async () => {
+    // const [business, setBusiness] = useState<BusinessData>({ name: "", tenantSlug: "", industry: "", location: "" });
+
+    //name, 
+
+    const payload = { name: business.name, tenantSlug: business.tenantSlug, industry: business.industry
+    , location: business.location , plan, subscription, teamMembers, dataImport };
+
+    const res = await fetch("/api/business/create", {
+      method: "POST",
+      headers: { 'Content-Type' : 'application/json'},
+      body: JSON.stringify(payload)
+    })
+
+    const data = await res.json();
+
+    console.log(data);
+      
     setCompleted(true);
     redirect("/onboarding/sync");
   };

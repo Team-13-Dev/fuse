@@ -23,7 +23,7 @@ const Sidebar = () => {
     ]
 
   return (
-    <nav className="sticky top-0 left-0 h-screen w-[15%] bg-white border-r border-[#E5E7EB] px-4">
+    <nav className="hidden xl:block xl:sticky top-0 left-0 h-screen w-[15%] bg-white border-r border-[#E5E7EB] px-4">
         <Link href={"/"} className="px-2 flex flex-col items-start py-3.5">
             <Image src={logo} alt='logo' width={35}/>
         </Link>
