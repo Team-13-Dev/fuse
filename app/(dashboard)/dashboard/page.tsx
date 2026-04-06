@@ -3,6 +3,16 @@ import MainTabs from './components/dashboard-main-tabs';
 import Header from './components/dashboard-header';
 import AddProductDialog from '@/app/components/common/AddProductDialog';
 
+const handleTest = async () => {
+  const res = await fetch("/api/customers/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json"},
+    body: JSON.stringify({})
+  });
+  const data = await res.json();
+
+  console.log(data);
+}
 
 const ChartIcon = (props : any) => (
   <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -335,7 +345,7 @@ const App = () => {
               <p className="text-sm text-gray-500 mt-1">Manage your agents and credits.</p>
               <div className="mt-4 space-y-2">
                 <AddProductDialog />
-                <button className="w-full text-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
+                <button onClick={() => handleTest()} className="w-full text-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
                   Add Coupons
                 </button>
               </div>
