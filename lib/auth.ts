@@ -26,7 +26,6 @@
       changeEmail: { enabled: true },
     },
 
-    // ── Trusted origins ─────────────────────────────────────────────────────────
     trustedOrigins: [
       process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
       process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
@@ -38,7 +37,7 @@
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60 * 24,
     },
-
+    
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
         if (
