@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db"; // Path to your drizzle db instance
-import { order } from "@/db/schema"; // Path to your schema file
+import { customer, order } from "@/db/schema"; // Path to your schema file
 import { eq } from "drizzle-orm";
 
 interface RouteParams {
@@ -8,7 +8,7 @@ interface RouteParams {
 }
 
 // ─── UPDATE ORDER STATUS (PATCH) ─────────────────────────────────────────────
-export async function PATCH(req: NextRequest, { params }: RouteParams) {
+export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await req.json();
@@ -19,19 +19,33 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     }
 
     // Update the order and return the updated record
-    const [updatedOrder] = await db
-      .update(order)
-      .set({ status })
-      .where(eq(order.id, id))
-      .returning();
+    const [updated] = await db.update(order).set({ status }).where(eq(order.id, id)).returning();
 
-    if (!updatedOrder) {
+        // Re-run the join query for just this ID
+        const [fullOrder] = await db
+        .select({
+            id: order.id,
+            businessId: order.businessId,
+            status: order.status,
+            total: order.total,
+            createdAt: order.createdAt,
+            customerId: order.customerId,
+            // Joined Customer fields
+            customerName: customer.fullName,
+            customerEmail: customer.email,
+            customerPhone: customer.phoneNumber,
+        })
+        .from(order)
+        .leftJoin(customer, eq(order.customerId, customer.id))
+        .where(eq(order.id, id));
+
+    if (!fullOrder) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    return NextResponse.json(updatedOrder);
+    return NextResponse.json(fullOrder);
   } catch (error) {
-    console.error("PATCH Error:", error);
+    console.error("PUT Error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

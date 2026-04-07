@@ -284,12 +284,18 @@ const metrics = isOrdersArray
   // ── STATUS UPDATE (inline from detail) ───────────────────────────────────────
   async function handleStatusChange(order: Order, status: OrderStatus) {
     const res = await fetch(`/api/orders/${order.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
+      method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     })
     if (!res.ok) { push("Failed to update status", "error"); return }
     const updated: Order = await res.json()
-    setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o))
+    console.log(updated);
+    setOrders(prev => prev.map(o => {
+      if (o.id === updated.id) {
+        return { ...o, ...updated };
+      }
+      return o;
+  }));
     setDetailOrder(updated)
     push(`Status updated to ${status}`, "success")
   }
@@ -440,7 +446,7 @@ const metrics = isOrdersArray
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full min-w-175">
               <thead>
                 <tr className="text-left border-b border-gray-50">
                   {["Order #", "Customer", "Total", "Status", "Date"].map(h => (
