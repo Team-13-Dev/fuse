@@ -1,357 +1,350 @@
 "use client"
-import MainTabs from './components/dashboard-main-tabs';
-import Header from './components/dashboard-header';
-import AddProductDialog from '@/app/components/common/AddProductDialog';
 
+import { useState, useEffect } from "react"
+import Link from "next/link"
+import {
+  Users, Package, Tag, ShoppingCart, TrendingUp,
+  ArrowUpRight, ArrowDownRight, Plus, ChevronRight,
+  Zap, Activity, DollarSign, BarChart3, Star,
+  Clock, CheckCircle2, AlertCircle, Circle,
+} from "lucide-react"
 
-const ChartIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20V10"></path>
-    <path d="M18 20V4"></path>
-    <path d="M6 20v-4"></path>
-  </svg>
-);
-
-const TimerIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"></circle>
-    <polyline points="12 6 12 12 16 14"></polyline>
-  </svg>
-);
-
-const CreditCardIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-    <line x1="1" y1="10" x2="23" y2="10"></line>
-  </svg>
-);
-
-const ChevronRight = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org=" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6"></polyline>
-  </svg>
-);
-
-const CircleIcon = (props : any) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
-    <circle cx="12" cy="12" r="10"></circle>
-  </svg>
-);
-
-// --- Data Structure Mocks ---
-const METRIC_CARDS_DATA = [
+// ─── Dummy data ───────────────────────────────────────────────────────────────
+const METRICS = [
   {
-    title: "Number of Orders",
-    value: "128",
-    change: "+20%",
-    period: "from last month",
-    icon: ChartIcon,
-    iconColor: "text-pink-500",
-    bgColor: "bg-pink-50",
+    label:    "Total Revenue",
+    value:    "EGP 284,390",
+    change:   "+18.2%",
+    up:       true,
+    sub:      "vs last month",
+    icon:     DollarSign,
+    accent:   true,
   },
   {
-    title: "Average Revenue",
-    value: "403 EGP",
-    change: "+8%",
-    period: "from last month",
-    icon: TimerIcon,
-    iconColor: "text-indigo-500",
-    bgColor: "bg-indigo-50",
+    label:    "Customers",
+    value:    "1,284",
+    change:   "+9.4%",
+    up:       true,
+    sub:      "active records",
+    icon:     Users,
+    href:     "/dashboard/customers",
   },
   {
-    title: "Total Revenue",
-    value: "31,250",
-    change: "+15%",
-    period: "from last month",
-    icon: CreditCardIcon,
-    iconColor: "text-teal-500",
-    bgColor: "bg-teal-50",
+    label:    "Products",
+    value:    "347",
+    change:   "+3",
+    up:       true,
+    sub:      "in catalog",
+    icon:     Package,
+    href:     "/dashboard/products",
   },
-];
+  {
+    label:    "Orders",
+    value:    "2,841",
+    change:   "-2.1%",
+    up:       false,
+    sub:      "this month",
+    icon:     ShoppingCart,
+  },
+]
 
-const AGENTS_DATA = [
-  { name: "Astra", percentage: 38, totalCalls: 122, callMinutes: 187, creditsSpent: "14,320" },
-  { name: "Zeus", percentage: 24, totalCalls: 76, callMinutes: 110, creditsSpent: "8,500" },
-  { name: "Orus", percentage: 15, totalCalls: 48, callMinutes: 70, creditsSpent: "5,000" },
-  { name: "Kore", percentage: 12, totalCalls: 38, callMinutes: 55, creditsSpent: "3,800" },
-];
+const RECENT_ORDERS = [
+  { id: "#ORD-9821", customer: "Sara Ali",       amount: "EGP 1,240", status: "completed", time: "2m ago" },
+  { id: "#ORD-9820", customer: "Mohamed Hassan", amount: "EGP 890",   status: "pending",   time: "14m ago" },
+  { id: "#ORD-9819", customer: "Layla Mahmoud",  amount: "EGP 3,450", status: "completed", time: "1h ago" },
+  { id: "#ORD-9818", customer: "Ahmed Karim",    amount: "EGP 560",   status: "failed",    time: "2h ago" },
+  { id: "#ORD-9817", customer: "Nour Ibrahim",   amount: "EGP 2,100", status: "completed", time: "3h ago" },
+]
 
-const LANGUAGE_DATA = [
-  { lang: "Affiliate", usage: "45%" },
-  { lang: "Direct Store", usage: "30%" },
-  { lang: "Website", usage: "15%" },
-  { lang: "Cold Calls", usage: "10%" },
-];
+const TOP_PRODUCTS = [
+  { name: "Wireless Headphones Pro", sold: 284, revenue: "EGP 42,600", change: "+12%" },
+  { name: "Summer Linen Shirt",      sold: 231, revenue: "EGP 18,480", change: "+8%"  },
+  { name: "Leather Wallet Slim",     sold: 198, revenue: "EGP 13,860", change: "+21%" },
+  { name: "Arabic Coffee Set",       sold: 176, revenue: "EGP 35,200", change: "+5%"  },
+  { name: "Smart Watch Band",        sold: 154, revenue: "EGP 9,240",  change: "-3%"  },
+]
 
-// --- Sub-Components ---
+const ACTIVITY = [
+  { icon: Users,    text: "New customer Sara Ali registered",        time: "2m ago",  color: "text-blue-500",   bg: "bg-blue-50"   },
+  { icon: Package,  text: "Product 'Wireless Headphones' restocked", time: "18m ago", color: "text-emerald-500", bg: "bg-emerald-50" },
+  { icon: Star,     text: "New 5-star review on Arabic Coffee Set",  time: "45m ago", color: "text-amber-500",  bg: "bg-amber-50"  },
+  { icon: Zap,      text: "Shopify integration synced 47 products",  time: "1h ago",  color: "text-violet-500", bg: "bg-violet-50" },
+  { icon: Users,    text: "Mohamed Hassan upgraded to VIP segment",  time: "2h ago",  color: "text-indigo-500", bg: "bg-indigo-50" },
+]
 
-const MetricCard = ({ title, value, change, period, icon: Icon, iconColor, bgColor } : { title: string, value: string , change: any, period: any, icon: any, iconColor: string, bgColor: string}) => (
-  <div className="flex-1 min-w-0 p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-    <div className="flex items-center justify-between">
-      <h3 className="text-sm font-medium text-gray-500">{title}</h3>
-      <div className={`p-2 rounded-full ${bgColor}`}>
-        <Icon className={`${iconColor}`} />
-      </div>
-    </div>
-    <div className="mt-4">
-      <p className="text-3xl font-bold text-gray-900">{value}</p>
-      <p className="mt-1 text-sm text-gray-500">
-        <span className="font-semibold text-green-600">{change}</span> {period}
-      </p>
-    </div>
-  </div>
-);
+const QUICK_ACTIONS = [
+  { label: "Add Product",   href: "/dashboard/products",   icon: Package,     color: "bg-indigo-600 hover:bg-indigo-700" },
+  { label: "Add Customer",  href: "/dashboard/customers",  icon: Users,       color: "bg-violet-600 hover:bg-violet-700" },
+  { label: "New Category",  href: "/dashboard/categories", icon: Tag,         color: "bg-blue-600 hover:bg-blue-700"    },
+]
 
-const AgentUsagePanel = () => {
-  const totalPercentage = AGENTS_DATA.reduce((sum, agent) => sum + agent.percentage, 0);
+// ─── Sparkline (CSS-only fake chart) ─────────────────────────────────────────
+function Sparkline({ up }: { up: boolean }) {
+  const points = up
+    ? [30, 25, 35, 28, 38, 32, 42, 36, 48, 42, 55, 50]
+    : [55, 50, 48, 52, 44, 48, 40, 44, 36, 40, 32, 38]
+
+  const max = Math.max(...points)
+  const min = Math.min(...points)
+  const h = 32
+  const w = 80
+  const step = w / (points.length - 1)
+
+  const path = points
+    .map((p, i) => {
+      const x = i * step
+      const y = h - ((p - min) / (max - min)) * h
+      return `${i === 0 ? "M" : "L"} ${x} ${y}`
+    })
+    .join(" ")
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 h-full flex flex-col">
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-xl font-semibold text-gray-800">Most Called Agents</h3>
-          <p className="text-5xl font-bold text-gray-900 mt-1">{totalPercentage}%</p>
-          <p className="text-sm text-gray-500">Call Usage</p>
-        </div>
-        <button className="flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-700">
-          Full stats
-          <ChevronRight className="ml-1" />
-        </button>
-      </div>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none">
+      <path d={path} stroke={up ? "#10b981" : "#ef4444"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
-      <div className="w-full h-2 bg-gray-200 rounded-full mt-4 flex overflow-hidden">
-        {AGENTS_DATA.map((agent, index) => (
+// ─── Status badge ─────────────────────────────────────────────────────────────
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
+    completed: { label: "Completed", icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-700" },
+    pending:   { label: "Pending",   icon: Clock,        cls: "bg-amber-50 text-amber-700"    },
+    failed:    { label: "Failed",    icon: AlertCircle,  cls: "bg-red-50 text-red-600"         },
+  }
+  const { label, icon: Icon, cls } = map[status] ?? map.pending
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>
+      <Icon size={10} />
+      {label}
+    </span>
+  )
+}
+
+// ─── Bar chart placeholder ─────────────────────────────────────────────────────
+function RevenueChart() {
+  const bars = [65, 80, 55, 90, 70, 85, 60, 95, 75, 88, 72, 100]
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+  return (
+    <div className="flex items-end gap-1.5 h-28 w-full">
+      {bars.map((h, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
           <div
-            key={agent.name}
-            style={{ width: `${agent.percentage}%`, backgroundColor: getAgentColor(index) }}
-            className="h-full"
-            title={`${agent.name}: ${agent.percentage}%`}
-          />
-        ))}
-      </div>
-
-      <div className="mt-6 grow overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-gray-500">
-            <tr>
-              <th className="py-2">Agent</th>
-              <th className="py-2">Total Calls</th>
-              <th className="py-2">Call Minutes</th>
-              <th className="py-2">Credits Spent</th>
-            </tr>
-          </thead>
-          <tbody>
-            {AGENTS_DATA.map((agent, index) => (
-              <tr key={agent.name} className="border-t border-gray-100">
-                <td className="py-3 flex items-center">
-                  <CircleIcon className={`w-2 h-2 mr-2`} style={{ color: getAgentColor(index) }} />
-                  <span className="font-medium text-gray-900">{agent.name}</span>
-                  <span className="ml-2 text-gray-500">{agent.percentage}%</span>
-                </td>
-                <td className="py-3 text-gray-700">{agent.totalCalls}</td>
-                <td className="py-3 text-gray-700">{agent.callMinutes}</td>
-                <td className="py-3 text-gray-700">{agent.creditsSpent}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-const LanguageUsagePanel = () => (
-  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-    <h3 className="text-xl font-semibold text-gray-800">Income Streams</h3>
-    <p className="text-4xl font-bold text-gray-900 mt-2">4</p>
-    <p className="text-sm text-gray-500">Streams</p>
-
-    <div className="mt-6 space-y-3">
-      {LANGUAGE_DATA.map((item, index) => (
-        <div key={item.lang}>
-          <div className="flex justify-between text-sm">
-            <div className="flex items-center">
-              <CircleIcon className={`w-2 h-2 mr-2`} style={{ color: getLanguageColor(index) }} />
-              {item.lang}
-            </div>
-            <span className="font-semibold text-gray-900">{item.usage}</span>
+            className="w-full rounded-t-md bg-indigo-100 group-hover:bg-indigo-500 transition-all duration-300 relative overflow-hidden"
+            style={{ height: `${h}%` }}
+          >
+            <div className="absolute inset-0 bg-linear-to-t from-indigo-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-            <div
-              className="h-1.5 rounded-full"
-              style={{
-                width: item.usage,
-                backgroundColor: getLanguageColor(index),
-              }}
-            ></div>
-          </div>
+          <span className="text-[9px] text-gray-400">{months[i]}</span>
         </div>
       ))}
     </div>
-  </div>
-);
+  )
+}
 
-// Helper function for consistent colors
-const getAgentColor = (index : number) => {
-  const colors = ["#4f46e5", "#ec4899", "#f97316", "#10b981"]; // Indigo, Pink, Orange, Emerald
-  return colors[index % colors.length];
-};
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function DashboardPage() {
+  const [greeting, setGreeting] = useState("Good morning")
 
-const getLanguageColor = (index : number) => {
-  const colors = ["#10b981", "#4f46e5", "#f97316", "#ec4899"]; // Emerald, Indigo, Orange, Pink
-  return colors[index % colors.length];
-};
-
-
-const StaticLineChart = () => {
-  // Static SVG to visually replicate the complex chart from the image.
-  // The viewport (0, 0) to (100, 40) is used for easy percentage-based positioning.
-  const CHART_HEIGHT = 40;
-  const CHART_WIDTH = 100;
-
-  const lines = [
-    {
-      data: "M0 6 C20 6, 30 6, 50 12 S80 18, 100 14", // Purple/Calls
-      stroke: "#9333ea",
-      name: "Number of Calls"
-    },
-    {
-      data: "M0 14 C15 14, 30 14, 50 18 S70 12, 100 8", // Orange/Duration
-      stroke: "#f97316",
-      name: "Average Duration"
-    },
-    {
-      data: "M0 16 C25 16, 45 10, 65 10 S80 16, 100 16", // Teal/Credits
-      stroke: "#14b8a6",
-      name: "Credits Spent"
-    },
-    {
-      data: "M0 10 C20 10, 40 18, 60 14 S85 8, 100 6", // Blue/Other Metric
-      stroke: "#3b82f6",
-      name: "Other Metric"
-    },
-  ];
+  useEffect(() => {
+    const h = new Date().getHours()
+    if (h < 12) setGreeting("Good morning")
+    else if (h < 17) setGreeting("Good afternoon")
+    else setGreeting("Good evening")
+  }, [])
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-      <div className="flex flex-col lg:flex-row gap-2 justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-800">Monthly Call Performance Overview</h2>
-        <div className="flex space-x-4 text-sm text-gray-600">
-          {lines.map((line) => (
-            <div key={line.name} className="flex items-center">
-              <CircleIcon className="mr-1" style={{ color: line.stroke }} />
-              <span>{line.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="px-6 py-8 max-w-7xl mx-auto space-y-8">
 
-      <div className="relative h-96">
-        {/* Y-Axis Labels and Horizontal Grid Lines */}
-        <div className="absolute inset-y-0 left-0 w-full pr-10 text-xs text-gray-400">
-          {[10, 8, 6, 4, 2, 0].map((label, index) => (
-            <div
-              key={label}
-              className="absolute right-full -translate-x-2"
-              style={{
-                top: `${(index / 5) * 80 + 5}%`, // Distribute labels evenly
-                transform: `translateY(-50%)`,
-              }}
+      {/* Page title + quick actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <p className="text-sm text-gray-500">{greeting} 👋</p>
+          <h1 className="text-2xl font-bold text-gray-900 mt-0.5">Overview</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {QUICK_ACTIONS.map(a => (
+            <Link
+              key={a.label}
+              href={a.href}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white transition-colors shadow-sm ${a.color}`}
             >
-              {label}
-            </div>
+              <a.icon size={14} />
+              <span className="hidden sm:inline">{a.label}</span>
+            </Link>
           ))}
-          {/* Horizontal Grid Lines */}
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={`grid-${i}`}
-              className="absolute border-t border-gray-200 w-full"
-              style={{ top: `${(i / 5) * 80 + 5}%` }}
-            />
-          ))}
-        </div>
-
-        {/* SVG Chart Area */}
-        <svg
-          viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-          preserveAspectRatio="none"
-          className="w-full h-4/5 mt-5"
-        >
-          {lines.map((line) => (
-            <path
-              key={line.name}
-              d={line.data}
-              fill="none"
-              stroke={line.stroke}
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-        </svg>
-
-        {/* X-Axis Labels */}
-        <div className="absolute bottom-0 left-0 w-full flex justify-between px-2 text-xs text-gray-500 pt-2 border-t border-gray-200">
-          <span>Jun 01</span>
-          <span>Jun 08</span>
-          <span>Jun 15</span>
-          <span>Jun 22</span>
-          <span>Jun 29</span>
         </div>
       </div>
-    </div>
-  );
-};
 
-
-// --- Main Layout Components ---
-
-
-// --- App Component ---
-const App = () => {
-  return (
-    <div className="min-h-screen bg-gray-50 font-sans">
-      <Header />
-      <MainTabs />
-
-      <main className="p-8 max-w-400 mx-auto">
-        {/* Main Title */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
-
-        {/* 1. Key Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {METRIC_CARDS_DATA.map((card) => (
-            <MetricCard key={card.title} {...card} />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8">
-            <StaticLineChart />
-          </div>
-
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-800">Quick Actions</h3>
-              <p className="text-sm text-gray-500 mt-1">Manage your agents and credits.</p>
-              <div className="mt-4 space-y-2">
-                <AddProductDialog />
-                <button className="w-full text-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
-                  Add Coupons
-                </button>
+      {/* Metric cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {METRICS.map(m => {
+          const Icon = m.icon
+          const card = (
+            <div className={`rounded-2xl p-5 border flex flex-col gap-4 transition-all hover:shadow-md
+              ${m.accent ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-100 text-gray-900"}`}>
+              <div className="flex items-center justify-between">
+                <div className={`p-2 rounded-xl ${m.accent ? "bg-indigo-500" : "bg-gray-50"}`}>
+                  <Icon size={16} className={m.accent ? "text-white" : "text-indigo-600"} />
+                </div>
+                <Sparkline up={m.up} />
+              </div>
+              <div>
+                <p className={`text-2xl font-bold ${m.accent ? "text-white" : "text-gray-900"}`}>{m.value}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className={`text-xs font-medium flex items-center gap-0.5
+                    ${m.up
+                      ? m.accent ? "text-emerald-300" : "text-emerald-600"
+                      : m.accent ? "text-red-300" : "text-red-500"
+                    }`}>
+                    {m.up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+                    {m.change}
+                  </span>
+                  <span className={`text-xs ${m.accent ? "text-indigo-200" : "text-gray-400"}`}>{m.sub}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs font-medium ${m.accent ? "text-indigo-200" : "text-gray-500"}`}>{m.label}</p>
+                {m.href && !m.accent && (
+                  <ArrowUpRight size={13} className="text-gray-300 group-hover:text-indigo-500" />
+                )}
               </div>
             </div>
-            {/* Language Usage Panel */}
-            <LanguageUsagePanel />
-          </div>
+          )
+          return m.href ? (
+            <Link key={m.label} href={m.href} className="group block">{card}</Link>
+          ) : (
+            <div key={m.label}>{card}</div>
+          )
+        })}
+      </div>
 
-          {/* Agent Usage Panel (Under Chart on mobile/tablet, full width under all on desktop) */}
-          <div className="lg:col-span-8">
-            <AgentUsagePanel />
+      {/* Revenue chart + Activity */}
+      <div className="grid lg:grid-cols-3 gap-6">
+
+        {/* Revenue chart */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Revenue Overview</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Monthly breakdown · 2025</p>
+            </div>
+            <div className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-full">
+              <TrendingUp size={11} />
+              +18.2% YoY
+            </div>
+          </div>
+          <RevenueChart />
+        </div>
+
+        {/* Activity feed */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-sm font-semibold text-gray-900">Live Activity</h2>
+            <Activity size={14} className="text-gray-300 animate-pulse" />
+          </div>
+          <div className="space-y-3">
+            {ACTIVITY.map((a, i) => {
+              const Icon = a.icon
+              return (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className={`w-7 h-7 rounded-lg ${a.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                    <Icon size={13} className={a.color} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-700 leading-relaxed">{a.text}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{a.time}</p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
-      </main>
-    </div>
-  );
-};
+      </div>
 
-export default App;
+      {/* Recent orders + Top products */}
+      <div className="grid lg:grid-cols-2 gap-6">
+
+        {/* Recent orders */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-gray-900">Recent Orders</h2>
+            <Link href="/dashboard/orders" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+              View all <ChevronRight size={12} />
+            </Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {RECENT_ORDERS.map((o, i) => (
+              <div key={i} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">{o.customer}</p>
+                  <p className="text-xs text-gray-400 font-mono">{o.id}</p>
+                </div>
+                <StatusBadge status={o.status} />
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold text-gray-900 tabular-nums">{o.amount}</p>
+                  <p className="text-[10px] text-gray-400">{o.time}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top products */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-gray-900">Top Products</h2>
+            <Link href="/dashboard/products" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+              View all <ChevronRight size={12} />
+            </Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {TOP_PRODUCTS.map((p, i) => (
+              <div key={i} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 transition-colors">
+                <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{p.name}</p>
+                  <p className="text-xs text-gray-400">{p.sold} sold</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold text-gray-900 tabular-nums">{p.revenue}</p>
+                  <p className={`text-xs font-medium ${p.change.startsWith("+") ? "text-emerald-600" : "text-red-500"}`}>
+                    {p.change}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* CRM quick links */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Customers",  href: "/dashboard/customers",  icon: Users,   desc: "Manage your customer base", color: "from-blue-500 to-indigo-600"    },
+          { label: "Products",   href: "/dashboard/products",   icon: Package, desc: "Catalog, pricing & stock",  color: "from-indigo-500 to-violet-600"  },
+          { label: "Categories", href: "/dashboard/categories", icon: Tag,     desc: "Organise your catalog",     color: "from-violet-500 to-purple-600"  },
+        ].map(c => {
+          const Icon = c.icon
+          return (
+            <Link key={c.label} href={c.href}
+              className="group bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all hover:border-indigo-100">
+              <div className={`w-10 h-10 rounded-xl bg-linear-to-br ${c.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{c.label}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{c.desc}</p>
+              <div className="flex items-center gap-1 mt-3 text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                Go to {c.label} <ArrowUpRight size={11} />
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+
+    </div>
+  )
+}
