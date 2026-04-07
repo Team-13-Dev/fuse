@@ -35,7 +35,7 @@ function MobileDrawer({
       <aside className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col shadow-2xl">
 
         <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 shrink-0">
-          <Link href="/" onClick={onClose} className="flex items-center gap-2">
+          <Link href="/dashboard" onClick={onClose} className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-linear-to-br from-indigo-600 to-violet-700 flex items-center justify-center shadow-sm">
               <Zap size={14} className="text-white" />
             </div>

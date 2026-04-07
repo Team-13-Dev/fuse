@@ -17,7 +17,7 @@ export default function CRMAIInsights() {
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-3">
             <div className="bg-indigo-600 p-1.5 rounded-xl aspect-square grid place-content-center">
-              <Image src={AILogo} alt='ai-logo' width={1000} className='w-[25px]'/>
+              <Image src={AILogo} alt='ai-logo' width={1000} className='w-6.25'/>
             </div>
             <span>
                 Insights
@@ -50,7 +50,7 @@ export default function CRMAIInsights() {
       <div className="flex flex-1 overflow-hidden">
         
         {/* LEFT WORKSPACE (Canvas) */}
-        <main className="flex-1 flex flex-col bg-[#f8f9fa] overflow-y-auto relative bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px]">
+        <main className="flex-1 flex flex-col bg-[#f8f9fa] overflow-y-auto relative bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] bg-size-[20px_20px]">
           
           <div className="p-8 max-w-5xl mx-auto w-full">
             
