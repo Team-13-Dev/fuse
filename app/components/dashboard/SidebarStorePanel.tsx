@@ -170,7 +170,7 @@ function StoreCard({
 
           <div className="border-t border-gray-200 p-1.5">
             <Link
-              href="/business/create"
+              href="/onboarding"
               onClick={() => setOpen(false)}
               className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-indigo-50 transition-colors text-indigo-600 w-full"
             >

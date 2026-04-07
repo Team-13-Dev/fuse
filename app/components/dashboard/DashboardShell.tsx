@@ -179,7 +179,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   async function handleSwitch(b: SidebarBusiness) {
     setActiveBusinessId(b.id)
     setUserRole(b.role)
-    await fetch("/api/business/switch", {
+    await fetch("/api/businesses/switch", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ businessId: b.id }),
