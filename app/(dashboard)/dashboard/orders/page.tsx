@@ -289,7 +289,6 @@ const metrics = isOrdersArray
     })
     if (!res.ok) { push("Failed to update status", "error"); return }
     const updated: Order = await res.json()
-    console.log(updated);
     setOrders(prev => prev.map(o => {
       if (o.id === updated.id) {
         return { ...o, ...updated };

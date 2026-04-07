@@ -8,8 +8,10 @@ interface RouteParams {
 }
 
 // ─── UPDATE ORDER STATUS (PATCH) ─────────────────────────────────────────────
-export async function PUT(req: NextRequest, { params }: RouteParams) {
-  try {
+export async function PUT(
+  req: NextRequest, 
+  { params }: { params: Promise<{ id: string }> } 
+) {  try {
     const { id } = await params;
     const body = await req.json();
     const { status } = body;
@@ -51,8 +53,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 }
 
 // ─── DELETE ORDER (DELETE) ───────────────────────────────────────────────────
-export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  try {
+export async function DELETE(
+  req: NextRequest, 
+  { params }: { params: Promise<{ id: string }> } // 1. Define params as a Promise
+) { try {
     const { id } = await params;
 
     // Delete the order
