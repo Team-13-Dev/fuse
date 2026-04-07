@@ -164,6 +164,7 @@ export const customer = pgTable("customer", {
 
 export const order = pgTable("order", {
   id:            uuid("id").primaryKey().defaultRandom(),
+  businessId: uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
   customerId:    uuid("customer_id").notNull().references(() => customer.id, { onDelete: "cascade" }),
   total:         decimal("total", { precision: 10, scale: 2 }).notNull(),
   status:        varchar("status", { length: 50 }).notNull().default("pending"),

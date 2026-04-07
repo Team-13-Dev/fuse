@@ -669,14 +669,10 @@ export default function OnboardingPage() {
   };
 
   const handleSubmit = async () => {
-    // const [business, setBusiness] = useState<BusinessData>({ name: "", tenantSlug: "", industry: "", location: "" });
-
-    //name, 
-
     const payload = { name: business.name, tenantSlug: business.tenantSlug, industry: business.industry
     , location: business.location , plan, subscription, teamMembers, dataImport };
 
-    const res = await fetch("/api/business/create", {
+    const res = await fetch("/api/businesses/create", {
       method: "POST",
       headers: { 'Content-Type' : 'application/json'},
       body: JSON.stringify(payload)

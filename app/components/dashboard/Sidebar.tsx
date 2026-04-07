@@ -35,7 +35,7 @@ export const NAV_SECTIONS = [
     label: "Commerce",
     items: [
       { label: "Customers",    href: "/dashboard/customers",    icon: Users                       },
-      { label: "Orders",       href: "/dashboard/orders",       icon: ShoppingCart, soon: true    },
+      { label: "Orders",       href: "/dashboard/orders",       icon: ShoppingCart    },
       { label: "Coupons",      href: "/dashboard/coupons",      icon: Ticket,       soon: true    },
     ],
   },
