@@ -7,7 +7,6 @@ import { getBusinessContext } from "@/lib/get-business-context";
 type Params = { params: Promise<{ id: string }> };
 
 // ─── GET /api/categories/[id] ─────────────────────────────────────────────────
-// Returns the category with its direct children and product count
 export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await getBusinessContext(req);
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,21 +14,22 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "Missing category ID" }, { status: 400 });
 
+  // Scoped to business
   const [row] = await db
     .select()
     .from(category)
-    .where(eq(category.id, id));
+    .where(and(eq(category.id, id), eq(category.businessId, ctx.businessId)));
 
   if (!row) return NextResponse.json({ error: "Category not found" }, { status: 404 });
 
-  // Direct children
+  // Direct children (also scoped — they must share the same businessId)
   const children = await db
     .select()
     .from(category)
-    .where(eq(category.parentId, id))
+    .where(and(eq(category.parentId, id), eq(category.businessId, ctx.businessId)))
     .orderBy(category.name);
 
-  // How many products are tagged with this category (scoped to this business)
+  // Product count for this category
   const [pcStats] = await db
     .select({ productCount: count() })
     .from(productCategory)
@@ -47,8 +47,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const ctx = await getBusinessContext(req);
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const allowed = ["owner", "manager"];
-  if (!allowed.includes(ctx.businessRole)) {
+  if (!["owner", "manager"].includes(ctx.businessRole)) {
     return NextResponse.json({ error: "Forbidden: insufficient role" }, { status: 403 });
   }
 
@@ -58,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const [existing] = await db
     .select({ id: category.id, parentId: category.parentId })
     .from(category)
-    .where(eq(category.id, id));
+    .where(and(eq(category.id, id), eq(category.businessId, ctx.businessId)));
 
   if (!existing) return NextResponse.json({ error: "Category not found" }, { status: 404 });
 
@@ -75,37 +74,32 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Category name must be 100 characters or fewer" }, { status: 400 });
   }
 
-  // Prevent circular reference: new parentId cannot be the category itself
-  // or any of its descendants
+  // Parent validation — must belong to same business, no cycles
   if (parentId !== undefined && parentId !== null && parentId !== "") {
-    if (parentId === id) {
+    if (parentId === id)
       return NextResponse.json({ error: "A category cannot be its own parent" }, { status: 422 });
-    }
 
+    // Parent must exist within this business
     const [parent] = await db
       .select({ id: category.id })
       .from(category)
-      .where(eq(category.id, parentId as string))
+      .where(and(eq(category.id, parentId as string), eq(category.businessId, ctx.businessId)))
       .limit(1);
 
     if (!parent) return NextResponse.json({ error: "Parent category not found" }, { status: 404 });
 
-    // Cycle guard: walk the ancestor chain of the proposed parent upward.
-    // If we encounter `id` at any level, the assignment would create a cycle.
-    // No depth limit is enforced — categories are unbounded (Shopify-style).
-    {
-      // Fetch all categories once to build the ancestor walk in memory —
-      // cheaper than N round-trips for deep trees.
-      const allCats = await db.select({ id: category.id, parentId: category.parentId }).from(category);
-      const parentMap = new Map(allCats.map(c => [c.id, c.parentId]));
+    // Cycle guard: walk ancestor chain in memory
+    const allCats = await db
+      .select({ id: category.id, parentId: category.parentId })
+      .from(category)
+      .where(eq(category.businessId, ctx.businessId));
 
-      let cursor: string | null = parentId as string;
-      while (cursor) {
-        if (cursor === id) {
-          return NextResponse.json({ error: "Circular category reference detected" }, { status: 422 });
-        }
-        cursor = parentMap.get(cursor) ?? null;
-      }
+    const parentMap = new Map(allCats.map(c => [c.id, c.parentId]));
+    let cursor: string | null = parentId as string;
+    while (cursor) {
+      if (cursor === id)
+        return NextResponse.json({ error: "Circular category reference detected" }, { status: 422 });
+      cursor = parentMap.get(cursor) ?? null;
     }
   }
 
@@ -115,14 +109,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (description !== undefined) patch.description = description && typeof description === "string" ? description.trim() || null : null;
   if (imageUrl    !== undefined) patch.imageUrl    = imageUrl    && typeof imageUrl    === "string" ? imageUrl.trim()    || null : null;
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(patch).length === 0)
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-  }
 
   const [updated] = await db
     .update(category)
     .set(patch)
-    .where(eq(category.id, id))
+    .where(and(eq(category.id, id), eq(category.businessId, ctx.businessId)))
     .returning();
 
   return NextResponse.json(updated);
@@ -133,12 +126,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const ctx = await getBusinessContext(req);
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!ctx.isOwner) {
-    return NextResponse.json(
-      { error: "Forbidden: only business owners can delete categories" },
-      { status: 403 }
-    );
-  }
+  if (!ctx.isOwner)
+    return NextResponse.json({ error: "Forbidden: only business owners can delete categories" }, { status: 403 });
 
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "Missing category ID" }, { status: 400 });
@@ -146,32 +135,30 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const [existing] = await db
     .select({ id: category.id, name: category.name })
     .from(category)
-    .where(eq(category.id, id));
+    .where(and(eq(category.id, id), eq(category.businessId, ctx.businessId)));
 
   if (!existing) return NextResponse.json({ error: "Category not found" }, { status: 404 });
 
-  // Guard: has children? Children's parentId will be set to NULL by DB (set null cascade).
-  // Surface this as a warning unless ?force=true
+  // Children within this business
   const children = await db
     .select({ id: category.id })
     .from(category)
-    .where(eq(category.parentId, id));
+    .where(and(eq(category.parentId, id), eq(category.businessId, ctx.businessId)));
 
-  // Guard: how many products are using this category?
   const [pcStats] = await db
     .select({ productCount: count() })
     .from(productCategory)
     .where(eq(productCategory.categoryId, id));
 
-  const childCount    = children.length;
-  const productCount  = Number(pcStats?.productCount ?? 0);
-  const force         = new URL(req.url).searchParams.get("force") === "true";
+  const childCount   = children.length;
+  const productCount = Number(pcStats?.productCount ?? 0);
+  const force        = new URL(req.url).searchParams.get("force") === "true";
 
   if ((childCount > 0 || productCount > 0) && !force) {
     return NextResponse.json(
       {
         error:        "Category has dependents",
-        detail:       `This category has ${childCount} sub-categor${childCount === 1 ? "y" : "ies"} and is used by ${productCount} product(s). Pass ?force=true to confirm deletion. Sub-categories will become root categories; product assignments will be removed.`,
+        detail:       `This category has ${childCount} sub-categor${childCount === 1 ? "y" : "ies"} and is used by ${productCount} product(s). Pass ?force=true to confirm.`,
         childCount,
         productCount,
       },
@@ -179,7 +166,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     );
   }
 
-  await db.delete(category).where(eq(category.id, id));
+  await db
+    .delete(category)
+    .where(and(eq(category.id, id), eq(category.businessId, ctx.businessId)));
 
   return NextResponse.json({ success: true, id, name: existing.name });
 }

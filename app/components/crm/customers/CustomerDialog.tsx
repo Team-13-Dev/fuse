@@ -100,7 +100,7 @@ export function CustomerDialog({ open, onOpenChange, onSave, existing, canWrite 
   }, [open])
 
   function setField(field: keyof CustomerFormData, raw: string) {
-    const value = raw || null
+    const value = field === "fullName" ? raw : (raw || null)
     setForm(prev => ({ ...prev, [field]: value }))
     if (errors[field])  setErrors(prev  => ({ ...prev, [field]: undefined }))
     if (apiError)       setApiError(null)
@@ -161,7 +161,7 @@ export function CustomerDialog({ open, onOpenChange, onSave, existing, canWrite 
             </label>
             <input
               ref={firstInputRef}
-              value={form.fullName}
+              value={form.fullName ?? ""}
               onChange={e => setField("fullName", e.target.value)}
               placeholder="e.g. Sara Ali"
               maxLength={255}

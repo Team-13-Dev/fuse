@@ -111,17 +111,14 @@ export const integration = pgTable("integration", {
   lastSync:      timestamp("last_sync"),
 });
 
-// ─── Category (global catalog, recursive parent→child) ────────────────────────
-// Categories are shared across the platform (not business-scoped), following
-// the ERD which shows no businessId on Category. Each business tags its own
-// products with these categories via the product_category join table.
+// ─── Category (business-scoped, recursive parent→child) ──────────────────────
 
 export const category = pgTable("category", {
   id:          uuid("id").primaryKey().defaultRandom(),
-  // Self-referencing FK: null = root / top-level category
+  businessId:  uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }), // ← ADDED
   parentId:    uuid("parent_id").references((): AnyPgColumn => category.id, { onDelete: "set null" }),
   name:        varchar("name", { length: 100 }).notNull(),
-  slug:        varchar("slug", { length: 100 }).notNull().unique(),
+  slug:        varchar("slug", { length: 100 }).notNull(), // ← removed .unique() — enforced per-business in API
   description: text("description"),
   imageUrl:    text("image_url"),
 });
@@ -189,8 +186,6 @@ export const orderItem = pgTable("order_item", {
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DRIZZLE RELATIONS
-// Every entity that participates in a join must declare its relation graph.
-// This enables db.query.*  with { with: { ... } } syntax throughout the app.
 // ═════════════════════════════════════════════════════════════════════════════
 
 export const userRelations = relations(user, ({ many }) => ({
@@ -219,6 +214,7 @@ export const businessRelations = relations(business, ({ one, many }) => ({
   integrations: many(integration),
   customers:    many(customer),
   products:     many(product),
+  categories:   many(category), // ← ADDED
 }));
 
 export const subscriptionRelations = relations(subscription, ({ one }) => ({
@@ -237,11 +233,9 @@ export const integrationRelations = relations(integration, ({ one }) => ({
 
 // ── Category: recursive self-reference (parent → children) ───────────────────
 export const categoryRelations = relations(category, ({ one, many }) => ({
-  // The parent category (null if root)
-  parent:           one(category,        { fields: [category.parentId], references: [category.id], relationName: "subcategories" }),
-  // All direct child categories
-  children:         many(category,       { relationName: "subcategories" }),
-  // Products assigned to this category (via join table)
+  business:          one(business, { fields: [category.businessId], references: [business.id] }), // ← ADDED
+  parent:            one(category, { fields: [category.parentId],   references: [category.id], relationName: "subcategories" }),
+  children:          many(category, { relationName: "subcategories" }),
   productCategories: many(productCategory),
 }));
 
