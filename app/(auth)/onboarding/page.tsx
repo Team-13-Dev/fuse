@@ -39,6 +39,7 @@ interface ImportedFile {
   name: string;
   size: number;
   type: string;
+  file: File; // actual File object preserved for pipeline upload
 }
 
 interface ConnectedPlatform {
@@ -390,6 +391,7 @@ function StepDataImport({
       name: f.name,
       size: f.size,
       type: f.type,
+      file: f,
     }));
     onChange({ ...data, uploadedFiles: [...data.uploadedFiles, ...newFiles] });
   };
@@ -518,7 +520,7 @@ function StepDataImport({
                 onClick={() => handleConnectPlatform(platform.id)}
                 disabled={isConnecting}
               >
-                <div className="platform-header w-full min-h-[182px] h-[80%]">
+                <div className="platform-header w-full min-h-45.5 h-[80%]">
                   <span className="platform-icon">{platform.icon}</span>
                   <div className="platform-status-indicator">
                     {connected ? (
@@ -669,19 +671,46 @@ export default function OnboardingPage() {
   };
 
   const handleSubmit = async () => {
-    const payload = { name: business.name, tenantSlug: business.tenantSlug, industry: business.industry
-    , location: business.location , plan, subscription, teamMembers, dataImport };
+    // Serialize the first uploaded file to sessionStorage so /onboarding/sync
+    // can restore it as a real File object for the pipeline upload.
+    const firstFile = dataImport.uploadedFiles[0]?.file ?? null;
+    if (firstFile) {
+      const reader = new FileReader();
+      await new Promise<void>((resolve) => {
+        reader.onload = () => {
+          sessionStorage.setItem("fuse_import_file", reader.result as string);
+          sessionStorage.setItem("fuse_import_filename", firstFile.name);
+          resolve();
+        };
+        reader.readAsDataURL(firstFile);
+      });
+    }
 
-    const res = await fetch("/api/businesses/create", {
+    // Strip File objects before JSON serialisation
+    const importPayload: DataImportData = {
+      ...dataImport,
+      uploadedFiles: dataImport.uploadedFiles.map(({ name, size, type }) => ({
+        name, size, type, file: new File([], name),
+      })),
+    };
+
+    const payload = {
+      name: business.name,
+      tenantSlug: business.tenantSlug,
+      industry: business.industry,
+      location: business.location,
+      plan,
+      subscription,
+      teamMembers,
+      dataImport: importPayload,
+    };
+
+    await fetch("/api/businesses/create", {
       method: "POST",
-      headers: { 'Content-Type' : 'application/json'},
-      body: JSON.stringify(payload)
-    })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-    const data = await res.json();
-
-    console.log(data);
-      
     setCompleted(true);
     redirect("/onboarding/sync");
   };
