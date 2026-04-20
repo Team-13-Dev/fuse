@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const upstream = await fetch(`${PIPELINE_URL}/clean`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ file_id: body.file_id, mapping: body.mapping }),
+    body: JSON.stringify({ file_id: body.file_id, mapping: body.mapping, business_id: ctx.businessId }),
   })
 
   if (!upstream.ok || !upstream.body) {

@@ -52,11 +52,10 @@ interface SSEProgress {
 
 interface SSEFinal {
   __final__: true
-  summary:         CleanResponse["summary"]
-  entities:        CleanResponse["entities"]
-  failed_rows:     CleanResponse["failed_rows"]
-  warnings:        CleanResponse["warnings"]
-  action_required: CleanResponse["action_required"]
+  summary:  CleanResponse["summary"]
+  stats:    StoreStats
+  warnings: string[]
+  error?:   string
 }
 
 type SSEEvent = SSEProgress | SSEFinal
@@ -586,11 +585,10 @@ export default function OnboardingSyncPage() {
           try {
             const ev = JSON.parse(json) as SSEEvent
             if (ev.__final__) {
-              const { __final__:_done, ...clean } = ev as SSEFinal
-              void _done
-              const result: CleanResponse = clean
-              setCleanResult(result)
-              await runStore(result)
+              const final = ev as SSEFinal
+              if (final.error) throw new Error(final.error)
+              setStoreStats(final.stats)
+              setPhase("done")
             } else {
               const pg = ev as SSEProgress
               setProgress({ stage:pg.stage, pct:pg.pct, detail:pg.detail, counts:pg.counts ?? {} })
@@ -604,27 +602,6 @@ export default function OnboardingSyncPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadResult, confirmedMap, ignoredCols, costPct, parseResult])
-
-  // ── Store ──────────────────────────────────────────────────────────────────
-  async function runStore(data: CleanResponse) {
-    setPhase("storing")
-    try {
-      const res = await fetch("/api/onboarding/store", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(data.entities),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error:"Save failed" })) as { error?:string }
-        throw new Error(err.error ?? "Save failed")
-      }
-      const json = await res.json() as { stats:StoreStats }
-      setStoreStats(json.stats)
-      setPhase("done")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save data")
-      setPhase("error")
-    }
-  }
 
   // ── Download ───────────────────────────────────────────────────────────────
   async function downloadML() {

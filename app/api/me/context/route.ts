@@ -4,24 +4,8 @@ import { business, teamMember } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 import { auth } from "@/lib/auth";
+import { user } from "@/db/schema";
 
-/**
- * GET /api/me/context
- *
- * Single endpoint.
- * Uses getBusinessContext to read the active business from the business_ctx
- * cookie, then fetches the full user profile and all accessible businesses
- * in one round-trip.
- *
- * Returns:
- * {
- *   user:             { id, name, email }
- *   activeBusinessId: string
- *   role:             string
- *   isOwner:          boolean
- *   businesses:       { id, name, tenantSlug, industry, role }[]
- * }
- */
 export async function GET(req: NextRequest) {
   // 1. Read the active business context from the httpOnly cookie
   const ctx = await getBusinessContext(req);
@@ -29,9 +13,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 2. Get the full session to read user profile
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) {
+  // 2. Get user profile from DB (one query, no better-auth overhead)
+  const [userRow] = await db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(eq(user.id, ctx.userId))
+    .limit(1);
+
+  if (!userRow) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -71,9 +60,9 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     user: {
-      id:    session.user.id,
-      name:  session.user.name,
-      email: session.user.email,
+      id:    userRow.id,
+      name:  userRow.name,
+      email: userRow.email,
     },
     activeBusinessId: ctx.businessId,
     role:             ctx.businessRole,

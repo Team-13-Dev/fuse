@@ -19,7 +19,13 @@ interface StoreStats {
   orders_inserted:number;    order_items_inserted:number
 }
 interface SSEProgress { __final__?:false; stage:string; pct:number; detail:string; counts:Record<string,number> }
-interface SSEFinal    { __final__:true; summary:CleanResponse["summary"]; entities:CleanResponse["entities"]; failed_rows:CleanResponse["failed_rows"]; warnings:CleanResponse["warnings"]; action_required:CleanResponse["action_required"] }
+interface SSEFinal {
+  __final__: true
+  summary:  CleanResponse["summary"]
+  stats:    StoreStats
+  warnings: string[]
+  error?:   string
+}
 type SSEEvent = SSEProgress | SSEFinal
 
 // ─── DB field catalogue ───────────────────────────────────────────────────────
@@ -246,10 +252,10 @@ export default function UploadDatasetModal({ open, onClose }: { open:boolean; on
           try {
             const ev = JSON.parse(json) as SSEEvent
             if (ev.__final__) {
-              const { __final__:_, ...clean } = ev as SSEFinal; void _
-              const result = clean as CleanResponse
-              setCleanResult(result)
-              await runStore(result)
+              const final = ev as SSEFinal
+              if (final.error) throw new Error(final.error)
+              setStoreStats(final.stats)
+              setPhase("done")
             } else {
               const pg = ev as SSEProgress
               setProgress({stage:pg.stage,pct:pg.pct,detail:pg.detail,counts:pg.counts??{}})
@@ -263,25 +269,6 @@ export default function UploadDatasetModal({ open, onClose }: { open:boolean; on
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadResult, confirmedMap, ignoredCols, costPct, parseResult])
-
-  // ── Store ─────────────────────────────────────────────────────────────────
-
-  async function runStore(data: CleanResponse) {
-    setPhase("storing")
-    try {
-      const res = await fetch("/api/onboarding/store", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(data.entities),
-      })
-      if (!res.ok) throw new Error("Failed to save data")
-      const json = await res.json() as { stats:StoreStats }
-      setStoreStats(json.stats)
-      setPhase("done")
-    } catch(e) {
-      setError(e instanceof Error ? e.message : "Save failed")
-      setPhase("error")
-    }
-  }
 
   if (!open) return null
 

@@ -60,7 +60,7 @@
         if (ownedBusiness.length > 0) {
           ctx.setCookie(
             "business_ctx",
-            JSON.stringify({ businessId: ownedBusiness[0].id, role: "owner" }),
+            JSON.stringify({ userId, businessId: ownedBusiness[0].id, role: "owner" }),
             {
               httpOnly: true,
               secure:   process.env.NODE_ENV === "production",
@@ -86,6 +86,7 @@
           ctx.setCookie(
             "business_ctx",
             JSON.stringify({
+              userId,
               businessId: memberBusiness[0].businessId,
               role:       memberBusiness[0].role,
             }),

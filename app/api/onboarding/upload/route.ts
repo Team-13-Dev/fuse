@@ -17,7 +17,7 @@ function getSupabase() {
   return createClient(url, key)
 }
 
-const BUCKET = "pipeline-uploads"
+const BUCKET = "pipeline-imports"
 
 export async function POST(req: NextRequest) {
   let formData: FormData
