@@ -1,125 +1,128 @@
-// lib/pipeline/types.ts
-// Shared types for the FUSE data pipeline integration.
-// These mirror the FastAPI Pydantic models exactly.
-
-// ─── /parse response ─────────────────────────────────────────────────────────
-
 export interface DerivableField {
-  field: string
-  formula: string
-  requires: string[]
+  field:          string
+  formula:        string
+  requires:       string[]
   source_columns: string[]
 }
 
 export interface ParseResponse {
-  header_row_index: number
-  detected_mapping: Record<string, string>
+  header_row_index:  number
+  detected_mapping:  Record<string, string>
   confidence_scores: Record<string, number>
-  match_methods: Record<string, string>
-  ml_required: string[]
-  ml_missing: string[]
-  ml_coverage_pct: number
-  derivable_fields: DerivableField[]
-  truly_missing: string[]
+  match_methods:     Record<string, string>
+  human_labels:      Record<string, string>   // plain-English label per column
+  groups:            Record<string, string>   // group name per column
+  sample_values:     Record<string, string[]> // up to 3 sample values per column
+  ml_required:       string[]
+  ml_missing:        string[]
+  ml_coverage_pct:   number
+  derivable_fields:  DerivableField[]
+  truly_missing:     string[]
   attribute_columns: Record<string, string>
-  unmapped_columns: string[]
-  sample_rows: Record<string, unknown>[]
-  warnings: string[]
+  unmapped_columns:  string[]
+  total_rows:        number
+  total_columns:     number
+  warnings:          string[]
 }
 
 // ─── /clean input ─────────────────────────────────────────────────────────────
 
 export interface ConfirmedMapping {
-  header_row_index: number
-  confirmed: Record<string, string>
-  attribute_columns: Record<string, string>
-  ignored_columns: string[]
-  cost_pct: number | null
+  header_row_index:        number
+  confirmed:               Record<string, string>
+  attribute_columns:       Record<string, string>
+  ignored_columns:         string[]
+  cost_pct:                number | null
   missing_field_decisions: Record<string, "placeholder" | "skip_feature">
 }
 
-// ─── /clean response ──────────────────────────────────────────────────────────
+// ─── /clean entity models ─────────────────────────────────────────────────────
 
 export interface CleanedCustomer {
-  clerkId: string | null
-  fullName: string | null
-  email: string | null
+  clerkId:     string | null
+  fullName:    string | null
+  email:       string | null
   phoneNumber: string | null
-  segment: string | null
-  metadata: Record<string, unknown>
+  segment:     string | null
+  metadata:    Record<string, unknown>
 }
 
 export interface CleanedProduct {
-  name: string
-  price: number | null
-  cost: number | null
-  stock: number | null
-  description: string | null
-  externalAccId: string | null
+  name:          string
+  externalAccId: string | null  // StockCode / SKU — primary dedup key
+  price:         number | null
+  cost:          number | null
+  stock:         number | null
+  description:   string | null
 }
 
 export interface CleanedOrder {
-  externalOrderId: string | null
-  status: string
-  total: number | null
-  orderVoucher: string | null
-  address: string | null
-  createdAt: string | null
-  customerExternalId: string | null
-  revenue: number | null
-  profit: number | null
-  profit_margin: number | null
+  externalOrderId:    string | null
+  customerExternalId: string | null  // clerkId used to link customer
+  status:             string
+  total:              number | null
+  revenue:            number | null
+  profit:             number | null
+  profit_margin:      number | null
+  createdAt:          string | null
+  address:            string | null
+  orderVoucher:       string | null
 }
 
 export interface CleanedOrderItem {
   orderExternalId: string | null
-  productName: string | null
-  quantity: number
-  unitPrice: number | null
-  itemDiscount: number
-  attributes: Record<string, unknown>
-  metadata: Record<string, unknown>
+  productAccId:    string | null  // externalAccId — primary product link
+  productName:     string | null  // fallback when no SKU
+  quantity:        number
+  unitPrice:       number | null
+  itemDiscount:    number
+  revenue:         number | null
+  profit:          number | null
+  attributes:      Record<string, unknown>
+  metadata:        Record<string, unknown>
 }
 
+// ─── /clean summary + response ────────────────────────────────────────────────
+
 export interface CleanSummary {
-  total_rows: number
-  clean_rows: number
-  failed_rows: number
-  customers_found: number
-  products_found: number
-  orders_found: number
+  total_rows:        number
+  clean_rows:        number
+  failed_rows:       number
+  cancelled_rows:    number
+  customers_found:   number
+  products_found:    number
+  orders_found:      number
   order_items_found: number
-  ml_coverage_pct: number
+  ml_coverage_pct:   number
+  derived_fields:    string[]
 }
 
 export interface FailedRow {
   row_index: number
-  raw_data: Record<string, unknown>
-  reason: string
+  reason:    string
 }
 
 export interface MissingFieldAction {
-  field: string
-  reason: string
+  field:   string
+  reason:  string
   options: string[]
   affects: string[]
 }
 
 export interface ActionRequired {
-  fields: MissingFieldAction[]
+  fields:  MissingFieldAction[]
   message: string
 }
 
 export interface CleanResponse {
-  summary: CleanSummary
+  summary:  CleanSummary
   entities: {
-    customers: CleanedCustomer[]
-    products: CleanedProduct[]
-    orders: CleanedOrder[]
+    customers:   CleanedCustomer[]
+    products:    CleanedProduct[]
+    orders:      CleanedOrder[]
     order_items: CleanedOrderItem[]
   }
-  failed_rows: FailedRow[]
-  derived_fields: string[]
-  warnings: string[]
+  failed_rows:     FailedRow[]
+  warnings:        string[]
   action_required: ActionRequired | null
 }

@@ -1,43 +1,55 @@
-// app/api/onboarding/clean/route.ts
-import { NextRequest, NextResponse } from "next/server"
+// Forwards the SSE stream from the pipeline directly to the browser.
+// No buffering — the stream passes through as-is.
+
+import { NextRequest } from "next/server"
 import { getBusinessContext } from "@/lib/get-business-context"
+import type { ConfirmedMapping } from "@/lib/pipeline/types"
 
 const PIPELINE_URL = process.env.PIPELINE_URL
 
 export async function POST(req: NextRequest) {
   const ctx = await getBusinessContext(req)
-  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!ctx) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 })
+  }
 
   if (!PIPELINE_URL) {
-    return NextResponse.json({ error: "PIPELINE_URL is not configured" }, { status: 503 })
+    return new Response(JSON.stringify({ error: "PIPELINE_URL not configured" }), { status: 503 })
   }
 
-  const contentType = req.headers.get("content-type") ?? ""
-  if (!contentType.includes("multipart/form-data")) {
-    return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 })
+  let body: { file_id: string; mapping: ConfirmedMapping }
+  try {
+    body = await req.json()
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400 })
   }
 
-  const body = await req.arrayBuffer()
+  if (!body.file_id || !body.mapping) {
+    return new Response(JSON.stringify({ error: "Missing file_id or mapping" }), { status: 400 })
+  }
 
+  // Forward to pipeline and stream the response straight back
   const upstream = await fetch(`${PIPELINE_URL}/clean`, {
-    method: "POST",
-    headers: { "Content-Type": contentType },
-    body,
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ file_id: body.file_id, mapping: body.mapping }),
   })
 
-  const data = await upstream.json()
-
-  // 202 = action_required: bubble it through with same status
-  if (upstream.status === 202) {
-    return NextResponse.json(data, { status: 202 })
-  }
-
-  if (!upstream.ok) {
-    return NextResponse.json(
-      { error: data.detail ?? "Pipeline clean failed" },
+  if (!upstream.ok || !upstream.body) {
+    const err = await upstream.text()
+    return new Response(
+      JSON.stringify({ error: `Pipeline error: ${err}` }),
       { status: upstream.status },
     )
   }
 
-  return NextResponse.json(data)
+  // Pass the SSE stream directly to the browser
+  return new Response(upstream.body, {
+    headers: {
+      "Content-Type":                "text/event-stream",
+      "Cache-Control":               "no-cache",
+      "X-Accel-Buffering":           "no",
+      "Access-Control-Allow-Origin": "*",
+    },
+  })
 }

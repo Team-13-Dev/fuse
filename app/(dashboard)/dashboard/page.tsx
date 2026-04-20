@@ -4,10 +4,12 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   Users, Package, Tag, ShoppingCart, TrendingUp,
-  ArrowUpRight, ArrowDownRight, Plus, ChevronRight,
-  Zap, Activity, DollarSign, BarChart3, Star,
-  Clock, CheckCircle2, AlertCircle, Circle,
-} from "lucide-react"
+  ArrowUpRight, ArrowDownRight, ChevronRight,
+  Zap, Activity, DollarSign, Star,
+  Clock, CheckCircle2, AlertCircle,
+  BellIcon, UserIcon, Upload
+  } from "lucide-react"
+import UploadDatasetModal from "@/app/components/dashboard/UploadDatasetModal"
 
 // ─── Dummy data ───────────────────────────────────────────────────────────────
 const METRICS = [
@@ -146,6 +148,8 @@ function RevenueChart() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [greeting, setGreeting] = useState("Good morning")
+  const [uploadOpen, setUploadOpen] = useState(false)
+
 
   useEffect(() => {
     const h = new Date().getHours()
@@ -176,6 +180,14 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+      <button
+        onClick={() => setUploadOpen(true)}
+        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+      >
+        <Upload className="w-4 h-4" />
+        Upload dataset
+      </button>
+      <UploadDatasetModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
 
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

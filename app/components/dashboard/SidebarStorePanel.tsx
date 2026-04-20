@@ -1,14 +1,16 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   Store, ChevronDown, ChevronUp, Check,
-  Plus, Briefcase, LogOut,
+  Plus, Briefcase, LogOut, Trash2, AlertTriangle,
 } from "lucide-react"
 import { signOut } from "@/lib/auth-client"
 
-// ─── Shared types (exported so Sidebar + Shell can import them) ───────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export type SidebarBusiness = {
   id:         string
   name:       string
@@ -24,7 +26,8 @@ export type SidebarUser = {
   role:  string
 }
 
-// ─── Shared helpers (exported for reuse in Sidebar / TopHeader) ───────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 export function getInitials(name: string) {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
 }
@@ -52,17 +55,126 @@ export function getRoleBadge(role: string) {
   return map[role] ?? map.member
 }
 
-// ─── Store card (with inline switcher) ───────────────────────────────────────
+// ─── Delete confirmation dialog ───────────────────────────────────────────────
+
+function DeleteDialog({
+  business,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  business: SidebarBusiness
+  onConfirm: () => void
+  onCancel:  () => void
+  loading:   boolean
+}) {
+  const [typed, setTyped] = useState("")
+  const confirmed = typed === business.name
+
+  return (
+    // Backdrop
+    <div
+      style={{
+        position:"fixed", inset:0, background:"rgba(0,0,0,0.5)",
+        zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center",
+        padding:20,
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div style={{
+        background:"#fff", borderRadius:16, padding:28, width:"100%", maxWidth:420,
+        boxShadow:"0 24px 48px rgba(0,0,0,0.2)",
+      }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+          <div style={{
+            width:36, height:36, borderRadius:10, background:"#fef2f2",
+            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+          }}>
+            <Trash2 size={16} color="#ef4444"/>
+          </div>
+          <div>
+            <h3 style={{ fontSize:15, fontWeight:700, color:"#111", marginBottom:2 }}>
+              Delete store permanently
+            </h3>
+            <p style={{ fontSize:12, color:"#6b7280" }}>This cannot be undone</p>
+          </div>
+        </div>
+
+        <div style={{
+          background:"#fff7ed", border:"1px solid #fed7aa",
+          borderRadius:8, padding:"10px 12px", marginBottom:16,
+          display:"flex", gap:8,
+        }}>
+          <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink:0, marginTop:1 }}/>
+          <p style={{ fontSize:12, color:"#92400e" }}>
+            All customers, products, orders and transaction records in{" "}
+            <strong>{business.name}</strong> will be permanently deleted.
+          </p>
+        </div>
+
+        <p style={{ fontSize:13, color:"#374151", marginBottom:8 }}>
+          Type <strong>{business.name}</strong> to confirm:
+        </p>
+        <input
+          value={typed}
+          onChange={e => setTyped(e.target.value)}
+          placeholder={business.name}
+          style={{
+            width:"100%", padding:"8px 12px", fontSize:13,
+            border:`1px solid ${confirmed ? "#ef4444" : "#e5e7eb"}`,
+            borderRadius:8, outline:"none", marginBottom:16,
+            color:"#111",
+          }}
+        />
+
+        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              padding:"8px 16px", borderRadius:8, border:"1px solid #e5e7eb",
+              background:"transparent", color:"#6b7280", cursor:"pointer", fontSize:13,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!confirmed || loading}
+            style={{
+              padding:"8px 16px", borderRadius:8, border:"none",
+              background: confirmed ? "#ef4444" : "#fca5a5",
+              color:"#fff", cursor: confirmed ? "pointer" : "not-allowed",
+              fontSize:13, fontWeight:600,
+              display:"flex", alignItems:"center", gap:6,
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? "Deleting…" : "Delete store"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Store card ───────────────────────────────────────────────────────────────
+
 function StoreCard({
   businesses,
   active,
   onSwitch,
+  onDeleted,
 }: {
   businesses: SidebarBusiness[]
   active:     SidebarBusiness | null
   onSwitch:   (b: SidebarBusiness) => void
+  onDeleted?: (id: string) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const router = useRouter()
+  const [open,          setOpen]          = useState(false)
+  const [deleteTarget,  setDeleteTarget]  = useState<SidebarBusiness | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -73,15 +185,35 @@ function StoreCard({
     return () => document.removeEventListener("mousedown", onDown)
   }, [])
 
-  // ── Loading skeleton — shown while active is null ──
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleteLoading(true)
+    try {
+      const res = await fetch(`/api/businesses/${deleteTarget.id}`, { method:"DELETE" })
+      if (!res.ok) throw new Error("Delete failed")
+      onDeleted?.(deleteTarget.id)
+      setDeleteTarget(null)
+      setOpen(false)
+      // If deleted the active store, redirect to dashboard to re-select
+      if (deleteTarget.id === active?.id) {
+        router.push("/dashboard")
+        router.refresh()
+      }
+    } catch {
+      alert("Could not delete store. Please try again.")
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   if (!active) {
     return (
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-2.5 animate-pulse">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-gray-200 shrink-0" />
+          <div className="w-9 h-9 rounded-lg bg-gray-200 shrink-0"/>
           <div className="flex-1 space-y-1.5">
-            <div className="h-3 bg-gray-200 rounded w-3/4" />
-            <div className="h-2.5 bg-gray-200 rounded w-1/2" />
+            <div className="h-3 bg-gray-200 rounded w-3/4"/>
+            <div className="h-2.5 bg-gray-200 rounded w-1/2"/>
           </div>
         </div>
       </div>
@@ -91,100 +223,122 @@ function StoreCard({
   const badge = getRoleBadge(active.role)
 
   return (
-    <div ref={ref} className="rounded-xl border border-gray-200 bg-white">
-
-      {/* Store identity row */}
-      <div className="flex items-center gap-2.5 p-2.5">
-        <div className={`w-9 h-9 rounded-lg bg-linear-to-br ${getAvatarGradient(active.name)}
-          flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm`}>
-          {getInitials(active.name)}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className="text-xs font-bold text-gray-900 truncate">{active.name}</p>
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badge.cls}`}>
-              {badge.label}
-            </span>
+    <>
+      <div ref={ref} className="rounded-xl border border-gray-200 bg-white">
+        {/* Store identity row */}
+        <div className="flex items-center gap-2.5 p-2.5">
+          <div className={`w-9 h-9 rounded-lg bg-linear-to-br ${getAvatarGradient(active.name)}
+            flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm`}>
+            {getInitials(active.name)}
           </div>
-          <div className="flex items-center gap-1 mt-0.5">
-            <Store size={9} className="text-gray-400 shrink-0" />
-            <p className="text-[10px] text-gray-400 font-mono truncate">/{active.tenantSlug}</p>
-          </div>
-          {active.industry && (
-            <div className="flex items-center gap-1">
-              <Briefcase size={9} className="text-gray-400 shrink-0" />
-              <p className="text-[10px] text-gray-400 truncate">{active.industry}</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-xs font-bold text-gray-900 truncate">{active.name}</p>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badge.cls}`}>
+                {badge.label}
+              </span>
             </div>
-          )}
+            <div className="flex items-center gap-1 mt-0.5">
+              <Store size={9} className="text-gray-400 shrink-0"/>
+              <p className="text-[10px] text-gray-400 font-mono truncate">/{active.tenantSlug}</p>
+            </div>
+            {active.industry && (
+              <div className="flex items-center gap-1">
+                <Briefcase size={9} className="text-gray-400 shrink-0"/>
+                <p className="text-[10px] text-gray-400 truncate">{active.industry}</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setOpen(v => !v)}
+            aria-label="Switch store"
+            className="p-1 rounded-md hover:bg-gray-100 transition-colors shrink-0"
+          >
+            <ChevronDown
+              size={14}
+              className={`text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+            />
+          </button>
         </div>
 
-        {/* Toggle */}
-        <button
-          onClick={() => setOpen(v => !v)}
-          aria-label="Switch store"
-          className="p-1 rounded-md hover:bg-gray-100 transition-colors shrink-0"
-        >
-          <ChevronDown
-            size={14}
-            className={`text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-          />
-        </button>
+        {/* Inline switcher */}
+        {open && (
+          <div className="border-t border-gray-100 rounded-b-xl overflow-hidden bg-gray-50">
+            <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest px-2 pt-1 pb-0.5">
+                Your stores
+              </p>
+              {businesses.map(b => {
+                const isActive = b.id === active.id
+                const bb       = getRoleBadge(b.role)
+                const isOwner  = b.role === "owner"
+                return (
+                  <div key={b.id} className="flex items-center gap-1">
+                    <button
+                      onClick={() => { onSwitch(b); setOpen(false) }}
+                      className={`flex-1 flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-colors
+                        ${isActive ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : "hover:bg-white"}`}
+                    >
+                      <div className={`w-7 h-7 rounded-md bg-linear-to-br ${getAvatarGradient(b.name)}
+                        flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
+                        {getInitials(b.name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate">{b.name}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className={`text-[9px] font-bold px-1 py-0.5 rounded-full ${bb.cls}`}>
+                            {bb.label}
+                          </span>
+                          <span className="text-[9px] text-gray-400 font-mono truncate">/{b.tenantSlug}</span>
+                        </div>
+                      </div>
+                      {isActive && <Check size={12} className="text-indigo-600 shrink-0"/>}
+                    </button>
+
+                    {/* Delete button — owners only */}
+                    {isOwner && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setDeleteTarget(b) }}
+                        title="Delete this store and all its data"
+                        className="p-1.5 rounded-md hover:bg-red-50 transition-colors shrink-0 group"
+                      >
+                        <Trash2 size={13} className="text-gray-300 group-hover:text-red-500 transition-colors"/>
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="border-t border-gray-200 p-1.5">
+              <Link
+                href="/onboarding"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-indigo-50 transition-colors text-indigo-600 w-full"
+              >
+                <Plus size={12}/>
+                <span className="text-xs font-semibold">Create new store</span>
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Inline switcher */}
-      {open && (
-        <div className="border-t border-gray-100 rounded-b-xl overflow-hidden bg-gray-50">
-          <div className="p-1.5 space-y-0.5 max-h-52 overflow-y-auto">
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest px-2 pt-1 pb-0.5">
-              Your stores
-            </p>
-            {businesses.map(b => {
-              const isActive = b.id === active.id
-              const bb = getRoleBadge(b.role)
-              return (
-                <button
-                  key={b.id}
-                  onClick={() => { onSwitch(b); setOpen(false) }}
-                  className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-colors
-                    ${isActive ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : "hover:bg-white"}`}
-                >
-                  <div className={`w-7 h-7 rounded-md bg-linear-to-br ${getAvatarGradient(b.name)}
-                    flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
-                    {getInitials(b.name)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 truncate">{b.name}</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded-full ${bb.cls}`}>
-                        {bb.label}
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-mono truncate">/{b.tenantSlug}</span>
-                    </div>
-                  </div>
-                  {isActive && <Check size={12} className="text-indigo-600 shrink-0" />}
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="border-t border-gray-200 p-1.5">
-            <Link
-              href="/onboarding"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-indigo-50 transition-colors text-indigo-600 w-full"
-            >
-              <Plus size={12} />
-              <span className="text-xs font-semibold">Create new store</span>
-            </Link>
-          </div>
-        </div>
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (
+        <DeleteDialog
+          business={deleteTarget}
+          loading={deleteLoading}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
-    </div>
+    </>
   )
 }
 
 // ─── User card ────────────────────────────────────────────────────────────────
+
 function UserCard({ user }: { user: SidebarUser | null }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -197,15 +351,14 @@ function UserCard({ user }: { user: SidebarUser | null }) {
     return () => document.removeEventListener("mousedown", onDown)
   }, [])
 
-  // ── Loading skeleton — shown while user session is resolving ──
   if (!user) {
     return (
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-2.5 animate-pulse">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0" />
+          <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0"/>
           <div className="flex-1 space-y-1.5">
-            <div className="h-3 bg-gray-200 rounded w-2/3" />
-            <div className="h-2.5 bg-gray-200 rounded w-1/2" />
+            <div className="h-3 bg-gray-200 rounded w-2/3"/>
+            <div className="h-2.5 bg-gray-200 rounded w-1/2"/>
           </div>
         </div>
       </div>
@@ -216,7 +369,6 @@ function UserCard({ user }: { user: SidebarUser | null }) {
 
   return (
     <div ref={ref} className="rounded-xl border border-gray-200 bg-white">
-      {/* User row */}
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center gap-2.5 p-2.5 hover:bg-gray-50 rounded-xl transition-colors"
@@ -240,14 +392,13 @@ function UserCard({ user }: { user: SidebarUser | null }) {
         />
       </button>
 
-      {/* User actions */}
       {open && (
         <div className="border-t border-gray-100 rounded-b-xl overflow-hidden bg-gray-50 p-1.5">
           <button
             onClick={() => signOut()}
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
-            <LogOut size={13} />
+            <LogOut size={13}/>
             Sign out
           </button>
         </div>
@@ -257,23 +408,29 @@ function UserCard({ user }: { user: SidebarUser | null }) {
 }
 
 // ─── Composed panel ───────────────────────────────────────────────────────────
+
 export function SidebarStorePanel({
   businesses,
   active,
   user,
   onSwitch,
+  onDeleted,
 }: {
   businesses: SidebarBusiness[]
   active:     SidebarBusiness | null
   user:       SidebarUser | null
   onSwitch:   (b: SidebarBusiness) => void
+  onDeleted?: (id: string) => void
 }) {
   return (
     <div className="border-b border-gray-100 px-3 py-3 space-y-2">
-      {/* Store card — renders skeleton while active=null, real content once loaded */}
-      <StoreCard businesses={businesses} active={active} onSwitch={onSwitch} />
-      {/* User card — renders skeleton while user=null, real content once session resolves */}
-      <UserCard user={user} />
+      <StoreCard
+        businesses={businesses}
+        active={active}
+        onSwitch={onSwitch}
+        onDeleted={onDeleted}
+      />
+      <UserCard user={user}/>
     </div>
   )
 }

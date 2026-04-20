@@ -3,6 +3,13 @@ import { getBusinessContext } from "@/lib/get-business-context"
 
 const PIPELINE_URL = process.env.PIPELINE_URL
 
+/**
+ * POST /api/onboarding/parse
+ *
+ * Accepts { file_id: string } — the Supabase storage path returned by /upload.
+ * Forwards it to the pipeline /parse endpoint which fetches the file directly
+ * from Supabase Storage. No file bytes travel through Next.js.
+ */
 export async function POST(req: NextRequest) {
   const ctx = await getBusinessContext(req)
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -11,18 +18,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "PIPELINE_URL is not configured" }, { status: 503 })
   }
 
-  const contentType = req.headers.get("content-type") ?? ""
-  if (!contentType.includes("multipart/form-data")) {
-    return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 })
+  let body: { file_id: string }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Expected JSON body with file_id" }, { status: 400 })
   }
 
-  // Forward the raw multipart body to the pipeline service unchanged
-  const body = await req.arrayBuffer()
+  if (!body.file_id) {
+    return NextResponse.json({ error: "Missing file_id" }, { status: 400 })
+  }
 
   const upstream = await fetch(`${PIPELINE_URL}/parse`, {
-    method: "POST",
-    headers: { "Content-Type": contentType },
-    body,
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ file_id: body.file_id }),
   })
 
   const data = await upstream.json()

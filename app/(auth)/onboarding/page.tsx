@@ -657,6 +657,7 @@ export default function OnboardingPage() {
     uploadedFiles: [],
     connectedPlatforms: [],
   });
+  const [submitting, setSubmitting] = useState(false)
 
   const canProceed = () => {
     if (currentStep === 0) return business.name && business.tenantSlug && business.industry && business.location;
@@ -671,49 +672,40 @@ export default function OnboardingPage() {
   };
 
   const handleSubmit = async () => {
-    // Serialize the first uploaded file to sessionStorage so /onboarding/sync
-    // can restore it as a real File object for the pipeline upload.
-    const firstFile = dataImport.uploadedFiles[0]?.file ?? null;
-    if (firstFile) {
-      const reader = new FileReader();
-      await new Promise<void>((resolve) => {
-        reader.onload = () => {
-          sessionStorage.setItem("fuse_import_file", reader.result as string);
-          sessionStorage.setItem("fuse_import_filename", firstFile.name);
-          resolve();
-        };
-        reader.readAsDataURL(firstFile);
-      });
+    setSubmitting(true)   // ← add this
+    try {
+      const firstFile = dataImport.uploadedFiles[0]?.file ?? null
+
+      if (firstFile) {
+        const formData = new FormData()
+        formData.append("file", firstFile)
+        const uploadRes = await fetch("/api/onboarding/upload", {
+          method: "POST",
+          body:   formData,
+        })
+        if (uploadRes.ok) {
+          const { file_id, filename } = await uploadRes.json()
+          sessionStorage.setItem("fuse_import_file_id", file_id)
+          sessionStorage.setItem("fuse_import_filename", filename)
+        }
+      }
+
+      await fetch("/api/businesses/create", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          name: business.name, tenantSlug: business.tenantSlug,
+          industry: business.industry, location: business.location,
+          plan, subscription, teamMembers,
+        }),
+      })
+
+      setCompleted(true)
+      redirect("/onboarding/sync")
+    } finally {
+      setSubmitting(false)
     }
-
-    // Strip File objects before JSON serialisation
-    const importPayload: DataImportData = {
-      ...dataImport,
-      uploadedFiles: dataImport.uploadedFiles.map(({ name, size, type }) => ({
-        name, size, type, file: new File([], name),
-      })),
-    };
-
-    const payload = {
-      name: business.name,
-      tenantSlug: business.tenantSlug,
-      industry: business.industry,
-      location: business.location,
-      plan,
-      subscription,
-      teamMembers,
-      dataImport: importPayload,
-    };
-
-    await fetch("/api/businesses/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    setCompleted(true);
-    redirect("/onboarding/sync");
-  };
+  }
 
   if (completed) {
     return (
@@ -797,9 +789,14 @@ export default function OnboardingPage() {
               <button
                 className="btn-next"
                 onClick={handleNext}
-                disabled={!canProceed()}
+                disabled={!canProceed() || submitting}
               >
-                {currentStep === STEPS.length - 1 ? "Launch Workspace 🚀" : "Continue →"}
+                {submitting
+                  ? "Setting up your workspace…"
+                  : currentStep === STEPS.length - 1
+                    ? "Launch Workspace 🚀"
+                    : "Continue →"
+                }
               </button>
             </div>
           </main>

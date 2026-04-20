@@ -175,7 +175,7 @@ export const orderItem = pgTable("order_item", {
   id:           uuid("id").primaryKey().defaultRandom(),
   orderId:      uuid("order_id").notNull().references(() => order.id, { onDelete: "cascade" }),
   // No cascade on productId — intentional: preserve order history if product is deleted
-  productId:    uuid("product_id").notNull().references(() => product.id),
+  productId:    uuid("product_id").notNull().references(() => product.id, { onDelete: "cascade" }),
   quantity:     integer("quantity").notNull().default(1),
   // unitPrice captured at time of sale — decoupled from live product.price
   unitPrice:    decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
