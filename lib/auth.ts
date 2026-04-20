@@ -40,10 +40,7 @@
     
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
-        if (
-          !ctx.path.startsWith("/sign-in/email") &&
-          !ctx.path.startsWith("/get-session")
-        ) {
+        if (!ctx.path.startsWith("/sign-in/email")) {
           return;
         }
 
@@ -98,29 +95,6 @@
               path:     "/",
             }
           );
-        }
-
-        const businessData = ownedBusiness[0] || memberBusiness[0];
-
-        if (businessData) {
-          const payload = { 
-            businessId: businessData.id || businessData.id, 
-            role: "owner" 
-          };
-
-          // 1. Keep the cookie for Web
-          ctx.setCookie("business_ctx", JSON.stringify(payload), {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            path: "/",
-          });
-
-          // 2. IMPORTANT: Return the data in the JSON body for Flutter
-          // This will merge 'business' into the object Flutter receives
-          return ctx.json({
-            ...ctx.context.newSession,
-            business: payload 
-          });
         }
       }),
     },

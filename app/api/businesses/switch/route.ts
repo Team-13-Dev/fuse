@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({ success: true });
 
-    response.cookies.set("business_ctx", JSON.stringify({ businessId, role }), {
+    response.cookies.set("business_ctx", JSON.stringify({ userId, businessId, role }), {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",

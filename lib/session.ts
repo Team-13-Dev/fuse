@@ -26,7 +26,9 @@ export type AuthSession = {
 
 export async function getAuthSession(): Promise<AuthSession> {
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get("auth.session_token")?.value;
+  const sessionToken =
+    cookieStore.get("better-auth.session_token")?.value ??
+    cookieStore.get("__Secure-better-auth.session_token")?.value;
 
   if (sessionToken) {
     const cached = await cache.get<AuthSession>(cacheKeys.session(sessionToken));

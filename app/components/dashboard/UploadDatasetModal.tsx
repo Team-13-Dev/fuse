@@ -241,27 +241,58 @@ export default function UploadDatasetModal({ open, onClose }: { open:boolean; on
       const reader = res.body.getReader()
       const dec    = new TextDecoder()
       let   buf    = ""
+      let   finalError: string | null = null
+      let   finalStats: StoreStats | null = null
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        buf += dec.decode(value, { stream:true })
+        buf += dec.decode(value, { stream: true })
         const lines = buf.split("\n\n"); buf = lines.pop() ?? ""
+
         for (const line of lines) {
+          // SSE comment (keepalive ping) — skip
+          if (line.startsWith(": ")) continue
           if (!line.startsWith("data: ")) continue
-          const json = line.slice(6).trim(); if (!json) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+
+          let ev: SSEEvent
           try {
-            const ev = JSON.parse(json) as SSEEvent
-            if (ev.__final__) {
-              const final = ev as SSEFinal
-              if (final.error) throw new Error(final.error)
-              setStoreStats(final.stats)
-              setPhase("done")
+            ev = JSON.parse(raw) as SSEEvent
+          } catch {
+            console.warn("[SSE] Malformed JSON, skipping:", raw.slice(0, 100))
+            continue
+          }
+
+          if (ev.__final__) {
+            const final = ev as SSEFinal
+            console.log("[SSE] Final event received:", final)
+            if (final.error) {
+              finalError = final.error
             } else {
-              const pg = ev as SSEProgress
-              setProgress({stage:pg.stage,pct:pg.pct,detail:pg.detail,counts:pg.counts??{}})
+              finalStats = final.stats
             }
-          } catch { /* skip malformed */ }
+          } else {
+            const pg = ev as SSEProgress
+            console.log(`[SSE] Progress: ${pg.stage} ${pg.pct}% — ${pg.detail}`)
+            // Sync phase with pipeline stage
+            if (pg.stage === "storing") setPhase("storing")
+            setProgress({ stage: pg.stage, pct: pg.pct, detail: pg.detail, counts: pg.counts ?? {} })
+          }
         }
+      }
+
+      // Stream closed — now act on the result
+      if (finalError) {
+        throw new Error(finalError)
+      }
+      if (finalStats) {
+        setStoreStats(finalStats)
+        setPhase("done")
+      } else {
+        // Stream ended without a final event — pipeline likely crashed
+        throw new Error("Import ended without confirmation. Check pipeline logs.")
       }
     } catch(e) {
       setError(e instanceof Error ? e.message : "Processing failed")
