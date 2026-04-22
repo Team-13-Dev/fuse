@@ -141,6 +141,7 @@ export default function UploadDatasetModal({ open, onClose }: { open:boolean; on
   const [search,       setSearch]       = useState("")
   const [showWarnings, setShowWarnings] = useState(false)
   const [showFailed,   setShowFailed]   = useState(false)
+  const [devFileId, setDevFileId] = useState("") // ONLY FOR DEVELOPMENT
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -153,6 +154,7 @@ export default function UploadDatasetModal({ open, onClose }: { open:boolean; on
       setConfirmedMap({}); setIgnoredCols(new Set())
       setCostPct(""); setSearch("")
       setShowWarnings(false); setShowFailed(false)
+      setDevFileId("")
     }
   }, [open])
 
@@ -414,6 +416,52 @@ export default function UploadDatasetModal({ open, onClose }: { open:boolean; on
                   onChange={e => { const f=e.target.files?.[0]; if(f) runUpload(f) }}
                 />
               </div>
+              {process.env.NODE_ENV === "development" && (
+                <div style={{
+                  marginTop: 20,
+                  padding: "12px 14px",
+                  background: "#fffbeb",
+                  border: "1px dashed #f59e0b",
+                  borderRadius: 10,
+                }}>
+                  <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600, marginBottom: 8 }}>
+                    🛠 DEV — Skip upload, use existing file_id
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1745234567890-abc123.xlsx"
+                      value={devFileId}
+                      onChange={e => setDevFileId(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && devFileId.trim()) {
+                          setUploadResult({ file_id: devFileId.trim(), filename: devFileId.trim(), size_mb: 0 })
+                          runParse(devFileId.trim())
+                        }
+                      }}
+                      style={{
+                        flex: 1, padding: "7px 10px", fontSize: 12,
+                        border: "1px solid #fbbf24", borderRadius: 6,
+                        outline: "none", background: "#fff",
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (!devFileId.trim()) return
+                        setUploadResult({ file_id: devFileId.trim(), filename: devFileId.trim(), size_mb: 0 })
+                        runParse(devFileId.trim())
+                      }}
+                      style={{
+                        padding: "7px 14px", borderRadius: 6, border: "none",
+                        background: "#f59e0b", color: "#fff", cursor: "pointer",
+                        fontSize: 12, fontWeight: 600,
+                      }}
+                    >
+                      Use ID →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

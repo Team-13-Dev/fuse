@@ -674,8 +674,17 @@ export default function OnboardingPage() {
   const handleSubmit = async () => {
     setSubmitting(true)   // ← add this
     try {
-      const firstFile = dataImport.uploadedFiles[0]?.file ?? null
+      await fetch("/api/businesses/create", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          name: business.name, tenantSlug: business.tenantSlug,
+          industry: business.industry, location: business.location,
+          plan, subscription, teamMembers,
+        }),
+      })
 
+      const firstFile = dataImport.uploadedFiles[0]?.file ?? null
       if (firstFile) {
         const formData = new FormData()
         formData.append("file", firstFile)
@@ -687,21 +696,11 @@ export default function OnboardingPage() {
           const { file_id, filename } = await uploadRes.json()
           sessionStorage.setItem("fuse_import_file_id", file_id)
           sessionStorage.setItem("fuse_import_filename", filename)
+          setCompleted(true)
+          redirect("/onboarding/sync")
         }
       }
-
-      await fetch("/api/businesses/create", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          name: business.name, tenantSlug: business.tenantSlug,
-          industry: business.industry, location: business.location,
-          plan, subscription, teamMembers,
-        }),
-      })
-
       setCompleted(true)
-      redirect("/onboarding/sync")
     } finally {
       setSubmitting(false)
     }

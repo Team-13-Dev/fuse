@@ -5,6 +5,10 @@ import { NextRequest } from "next/server"
 import { getBusinessContext } from "@/lib/get-business-context"
 import type { ConfirmedMapping } from "@/lib/pipeline/types"
 
+//For development only, to disable the timeout of the request body
+// ============
+import { Agent } from "undici"
+// ============
 const PIPELINE_URL = process.env.PIPELINE_URL
 
 export async function POST(req: NextRequest) {
@@ -29,11 +33,22 @@ export async function POST(req: NextRequest) {
   }
 
   // Forward to pipeline and stream the response straight back
+  // ============
   const upstream = await fetch(`${PIPELINE_URL}/clean`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ file_id: body.file_id, mapping: body.mapping, business_id: ctx.businessId }),
-  })
+    // Disable undici's timeouts for this long-running SSE stream.
+    // Typed as `any` because Node's fetch types don't yet include the dispatcher option.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    dispatcher: new Agent({
+      headersTimeout: 0,          // no timeout waiting for response headers
+      bodyTimeout:    0,          // no timeout on body bytes between chunks
+      keepAliveTimeout: 60_000,
+      keepAliveMaxTimeout: 600_000,
+    }) as any,
+  } as any)
+  // ============
 
   if (!upstream.ok || !upstream.body) {
     const err = await upstream.text()
