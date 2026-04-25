@@ -26,7 +26,6 @@ export async function getBusinessContext(req: NextRequest) {
             }
         }
     }
-    console.log(sessionData)
 
     if (!sessionData) return null;
 

@@ -22,7 +22,7 @@ export interface ParseResponse {
   unmapped_columns:  string[]
   total_rows:        number
   total_columns:     number
-  warnings:          string[]
+  warnings:          string[],
 }
 
 // ─── /clean input ─────────────────────────────────────────────────────────────
@@ -120,9 +120,10 @@ export interface CleanResponse {
     customers:   CleanedCustomer[]
     products:    CleanedProduct[]
     orders:      CleanedOrder[]
-    order_items: CleanedOrderItem[]
+    order_items: CleanedOrderItem[],
   }
   failed_rows:     FailedRow[]
   warnings:        string[]
-  action_required: ActionRequired | null
+  action_required: ActionRequired | null,
+  derived_fields:    string[]
 }
