@@ -1,54 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { order, orderItem, customer, product } from "@/db/schema";
-import { eq, and, ilike } from "drizzle-orm";
+import { order, orderItem, customer, product, } from "@/db/schema";
+import { eq, and, ilike, desc, count } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 
 // ─── GET /api/orders ──────────────────────────────────────────────
-// Returns orders with optional filters: status, customer, search
 export async function GET(req: NextRequest) {
-    try{
-        const ctx = await getBusinessContext(req);
-        if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const ctx = await getBusinessContext(req);
+    if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { searchParams } = new URL(req.url);
-        const status   = searchParams.get("status")?.trim();
-        const customerId = searchParams.get("customer")?.trim();
-        const search   = searchParams.get("search")?.trim();
+    const { searchParams } = new URL(req.url);
+    const status     = searchParams.get("status")?.trim();
+    const customerId = searchParams.get("customer")?.trim();
+    const search     = searchParams.get("search")?.trim();
+    const page       = Math.max(parseInt(searchParams.get("page")  ?? "1",  10), 1);
+    const limit      = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 500);
+    const offset     = (page - 1) * limit;
 
-        const conditions = [eq(order.businessId, ctx.businessId)]; 
+    const conditions = [eq(order.businessId, ctx.businessId)];
+    if (status)     conditions.push(eq(order.status, status));
+    if (customerId) conditions.push(eq(order.customerId, customerId));
+    if (search)     conditions.push(ilike(order.address, `%${search}%`));
 
-        if (status)   conditions.push(eq(order.status, status));
-        if (customerId) conditions.push(eq(order.customerId, customerId));
-        if (search)   conditions.push(ilike(order.address, `%${search}%`));
+    const where = and(...conditions);
 
-        // 2. Perform the Join
-        const rows = await db
-            .select({
-            id: order.id,
-            businessId: order.businessId,
-            status: order.status,
-            total: order.total,
-            createdAt: order.createdAt,
-            customerId: order.customerId,
-            // Joined Customer fields
-            customerName: customer.fullName,
-            customerEmail: customer.email,
-            customerPhone: customer.phoneNumber,
-            })
-            .from(order)
-            .leftJoin(customer, eq(order.customerId, customer.id))
-            .where(and(...conditions))
-            .orderBy(order.createdAt);
+    const [rows, countResult] = await Promise.all([
+      db
+        .select({
+          id:            order.id,
+          businessId:    order.businessId,
+          status:        order.status,
+          total:         order.total,
+          createdAt:     order.createdAt,
+          customerId:    order.customerId,
+          customerName:  customer.fullName,
+          customerEmail: customer.email,
+          customerPhone: customer.phoneNumber,
+        })
+        .from(order)
+        .leftJoin(customer, eq(order.customerId, customer.id))
+        .where(where)
+        .orderBy(desc(order.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ n: count() }).from(order).where(where),
+    ]);
 
-        return NextResponse.json(rows);
-    }catch(error){
-      console.error("Fetch Orders Error:", error);
-      // Use the second argument of .json() to set the actual HTTP status code
-      return NextResponse.json(
-          { error: "Internal server error" }, 
-          { status: 500 } 
-      );
+    const total = Number(countResult[0].n);
+
+    return NextResponse.json({
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext:    page * limit < total,
+        hasPrev:    page > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Fetch Orders Error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
