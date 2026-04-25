@@ -1,62 +1,66 @@
+import { auth } from "./auth";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import { db } from "@/db";
+import { session, user, teamMember, business } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-export interface BusinessContext {
-  userId:       string;
-  businessId:   string;
-  businessRole: string;
-  isOwner:      boolean;
-}
+export async function getBusinessContext(req: NextRequest) {
+    let sessionData = await auth.api.getSession({ headers: req.headers });
 
-/**
- * Reads auth context from signed cookies — no DB queries.
- *
- * The business_ctx cookie is set at login by lib/auth.ts and contains
- * { businessId, role }. The better-auth session cookie confirms the user
- * is logged in. Neither requires a Neon round-trip.
- *
- * For Flutter / mobile clients that send Authorization + x-business-id headers,
- * we fall back to header-based resolution (also no DB query).
- */
-export async function getBusinessContext(req: NextRequest): Promise<BusinessContext | null> {
-  const cookieStore = await cookies();
+    if (!sessionData) {
+        const authHeader = req.headers.get("Authorization");
+        const token = authHeader?.startsWith("Bearer ") 
+            ? authHeader.substring(7) 
+            : authHeader;        
 
-  // ── Web path: read from httpOnly cookies ──────────────────────────────────
-  const sessionToken =
-    cookieStore.get("better-auth.session_token")?.value ??
-    cookieStore.get("__Secure-better-auth.session_token")?.value;
+        if (token) {
+            const cleanToken = token.substring(7).trim()
+            const dbSession = await db.query.session.findFirst({
+                where: eq(session.token, cleanToken),
+                with: { user: true },
+            });
 
-  const rawCtx = cookieStore.get("business_ctx")?.value;
+            if (dbSession && new Date(dbSession.expiresAt) > new Date()) {
+                sessionData = { user: dbSession.user, session: dbSession } as any;
+            }
+        }
+    }
+    console.log(sessionData)
 
-  if (sessionToken && rawCtx) {
-    try {
-      const ctx = JSON.parse(rawCtx) as { businessId: string; role: string; userId?: string };
-      if (ctx.businessId) {
-        const isOwner = ctx.role === "owner";
-        return {
-          userId:       ctx.userId ?? "",   // populated after login hook sets it
-          businessId:   ctx.businessId,
-          businessRole: ctx.role ?? "member",
-          isOwner,
-        };
-      }
-    } catch { /* malformed cookie — fall through */ }
-  }
+    if (!sessionData) return null;
 
-  // ── Mobile / Flutter path: Authorization header + x-business-id ──────────
-  const authHeader = req.headers.get("Authorization");
-  const businessId = req.headers.get("x-business-id");
+    const userId = sessionData.user.id;
 
-  if (authHeader && businessId) {
-    // Token is present and business is specified — trust the header.
-    // Full token validation happens in better-auth middleware for protected routes.
+    // 2. Resolve Business ID (Header for Flutter, Cookie for Web)
+    const headerId = req.headers.get("x-business-id");
+    let businessId: string | null = headerId;
+
+    if (!businessId) {
+        const cookieStore = await cookies();
+        const raw = cookieStore.get("business_ctx")?.value;
+        businessId = raw ? JSON.parse(raw).businessId : null;
+    }
+
+    if (!businessId) return null;
+
+    // 3. SECURE VALIDATION: Ensure user actually belongs to this business
+    // Check if owner
+    const isOwner = await db.query.business.findFirst({
+        where: and(eq(business.id, businessId), eq(business.userId, userId))
+    });
+
+    // Check if team member
+    const membership = !isOwner ? await db.query.teamMember.findFirst({
+        where: and(eq(teamMember.businessId, businessId), eq(teamMember.userId, userId))
+    }) : null;
+
+    if (!isOwner && !membership) return null;
+
     return {
-      userId:       "",   // not needed for header-auth callers
-      businessId,
-      businessRole: "owner",   // conservative default; tighten if mobile needs roles
-      isOwner:      true,
+        userId,
+        businessId,
+        businessRole: isOwner ? "owner" : (membership?.role || "member"),
+        isOwner: !!isOwner,
     };
-  }
-
-  return null;
 }

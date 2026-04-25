@@ -3,7 +3,6 @@ import { db } from "@/db";
 import { business, teamMember } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
-import { auth } from "@/lib/auth";
 import { user } from "@/db/schema";
 
 export async function GET(req: NextRequest) {
