@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { category } from "@/db/schema";
-import { eq, and, or, ilike } from "drizzle-orm";
+import { eq, and, or, ilike, count } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 
 function slugify(name: string): string {
@@ -12,12 +12,8 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/**
- * GET /api/categories
- * Returns the category tree scoped to the active business.
- * ?search= — fuzzy filter on name / description
- * ?flat=true — flat array instead of nested tree
- */
+// ─── GET /api/categories ──────────────────────────────────────────────
+
 export async function GET(req: NextRequest) {
   const ctx = await getBusinessContext(req);
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -25,6 +21,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim() ?? "";
   const flat   = searchParams.get("flat") === "true";
+  const page   = Math.max(parseInt(searchParams.get("page")  ?? "1",  10), 1);
+  const limit  = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 500);
+  const offset = (page - 1) * limit;
 
   const conditions = [eq(category.businessId, ctx.businessId)];
   if (search) {
@@ -36,15 +35,33 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const all = await db
-    .select()
-    .from(category)
-    .where(and(...conditions))
-    .orderBy(category.name);
+  const where = and(...conditions);
 
-  if (flat) return NextResponse.json(all);
+  // ── Flat mode: paginated ───────────────────────────────────────────────────
+  if (flat) {
+    const [rows, countResult] = await Promise.all([
+      db.select().from(category).where(where).orderBy(category.name).limit(limit).offset(offset),
+      db.select({ n: count() }).from(category).where(where),
+    ]);
 
-  // Build nested tree in JS
+    const total = Number(countResult[0].n);
+
+    return NextResponse.json({
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext:    page * limit < total,
+        hasPrev:    page > 1,
+      },
+    });
+  }
+
+  // ── Tree mode: fetch all, build hierarchy in JS (no pagination) ───────────
+  const all = await db.select().from(category).where(where).orderBy(category.name);
+
   type CatRow  = typeof all[number];
   type CatNode = CatRow & { children: CatNode[] };
 
@@ -60,7 +77,7 @@ export async function GET(req: NextRequest) {
     }
   });
 
-  return NextResponse.json(roots);
+  return NextResponse.json({ data: roots });
 }
 
 /**

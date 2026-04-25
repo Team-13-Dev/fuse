@@ -1,28 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { product } from "@/db/schema";
-import { eq, ilike, and, or, lte, gt, desc } from "drizzle-orm";
+import { eq, ilike, and, or, lte, gt, desc, count } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 
-/**
- * GET /api/products
- * Query params:
- *   search  – fuzzy match on name OR description
- *   stock   – "out" (qty=0) | "low" (qty 1-10) | "ok" (qty>10)
- *   limit   – default 100, max 500
- *   offset  – default 0
- */
+// ─── GET /api/products ──────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const ctx = await getBusinessContext(req);
-  if (!ctx) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim() ?? "";
   const stock  = searchParams.get("stock")?.trim()  ?? "";
-  const limit  = Math.min(parseInt(searchParams.get("limit")  ?? "100", 10), 500);
-  const offset = Math.max(parseInt(searchParams.get("offset") ?? "0",   10), 0);
+  const page   = Math.max(parseInt(searchParams.get("page")  ?? "1",  10), 1);
+  const limit  = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 500);
+  const offset = (page - 1) * limit;
 
   const conditions = [eq(product.businessId, ctx.businessId)];
 
@@ -43,15 +35,26 @@ export async function GET(req: NextRequest) {
     conditions.push(gt(product.stock, 10));
   }
 
-  const rows = await db
-    .select()
-    .from(product)
-    .where(and(...conditions))
-    .orderBy(desc(product.id))
-    .limit(limit)
-    .offset(offset);
+  const where = and(...conditions);
 
-  return NextResponse.json(rows);
+  const [rows, countResult] = await Promise.all([
+    db.select().from(product).where(where).orderBy(desc(product.id)).limit(limit).offset(offset),
+    db.select({ n: count() }).from(product).where(where),
+  ]);
+
+  const total = Number(countResult[0].n);
+
+  return NextResponse.json({
+    data: rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext:    page * limit < total,
+      hasPrev:    page > 1,
+    },
+  });
 }
 
 /**

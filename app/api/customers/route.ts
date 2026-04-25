@@ -1,28 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { customer } from "@/db/schema";
-import { eq, ilike, and, or } from "drizzle-orm";
+import { eq, ilike, and, or, desc, count } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 
-/**
- * GET /api/customers
- * Query params:
- *   search   – fuzzy match on fullName, email, phoneNumber
- *   segment  – exact filter ("VIP" | "Regular" | "New" | "At-risk" | "Inactive")
- *   limit    – default 100, max 500
- *   offset   – default 0
- */
+// ─── GET /api/customers ──────────────────────────────────────────────
+
 export async function GET(req: NextRequest) {
   const ctx = await getBusinessContext(req);
-  if (!ctx) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const search  = searchParams.get("search")?.trim() ?? "";
+  const search  = searchParams.get("search")?.trim()  ?? "";
   const segment = searchParams.get("segment")?.trim() ?? "";
-  const limit   = Math.min(parseInt(searchParams.get("limit") ?? "100", 10), 500);
-  const offset  = Math.max(parseInt(searchParams.get("offset") ?? "0",  10), 0);
+  const page    = Math.max(parseInt(searchParams.get("page")  ?? "1",  10), 1);
+  const limit   = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 500);
+  const offset  = (page - 1) * limit;
 
   const conditions = [eq(customer.businessId, ctx.businessId)];
 
@@ -36,18 +29,28 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  if (segment) {
-    conditions.push(eq(customer.segment, segment));
-  }
+  if (segment) conditions.push(eq(customer.segment, segment));
 
-  const rows = await db
-    .select()
-    .from(customer)
-    .where(and(...conditions))
-    .limit(limit)
-    .offset(offset);
+  const where = and(...conditions);
 
-  return NextResponse.json(rows);
+  const [rows, countResult] = await Promise.all([
+    db.select().from(customer).where(where).orderBy(desc(customer.id)).limit(limit).offset(offset),
+    db.select({ n: count() }).from(customer).where(where),
+  ]);
+
+  const total = Number(countResult[0].n);
+
+  return NextResponse.json({
+    data: rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext:    page * limit < total,
+      hasPrev:    page > 1,
+    },
+  });
 }
 
 /**
