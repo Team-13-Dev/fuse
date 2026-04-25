@@ -3,6 +3,10 @@ import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  sessionOptions: {
+    refetchOnWindowFocus: false,
+    refetchWhenOffline: false
+  }
 });
 
 export const signIn = authClient.signIn;
@@ -29,7 +33,5 @@ export const listSessions = authClient.listSessions;
 export const revokeSession = authClient.revokeSession;
 
 export const revokeOtherSessions = authClient.revokeOtherSessions;
-
-
 
 export const useSession = authClient.useSession;

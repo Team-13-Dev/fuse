@@ -7,7 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, ChevronRight,
   Zap, Activity, DollarSign, Star,
   Clock, CheckCircle2, AlertCircle,
-  BellIcon, UserIcon, Upload
+  Upload
   } from "lucide-react"
 import UploadDatasetModal from "@/app/components/dashboard/UploadDatasetModal"
 

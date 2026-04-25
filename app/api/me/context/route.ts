@@ -57,15 +57,22 @@ export async function GET(req: NextRequest) {
 
   const allBusinesses = [...ownedWithRole, ...memberOnly];
 
-  return NextResponse.json({
-    user: {
-      id:    userRow.id,
-      name:  userRow.name,
-      email: userRow.email,
+  return NextResponse.json(
+    {
+      user: {
+        id: userRow.id,
+        name: userRow.name,
+        email: userRow.email,
+      },
+      activeBusinessId: ctx.businessId,
+      role: ctx.businessRole,
+      isOwner: ctx.isOwner,
+      businesses: allBusinesses,
     },
-    activeBusinessId: ctx.businessId,
-    role:             ctx.businessRole,
-    isOwner:          ctx.isOwner,
-    businesses:       allBusinesses,
-  });
+    {
+      headers: {
+        "Cache-Control": "private, max-age=60", // cache for 60s
+      },
+    }
+  );
 }
