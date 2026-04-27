@@ -10,46 +10,26 @@ import {
   Upload
   } from "lucide-react"
 import UploadDatasetModal from "@/app/components/dashboard/UploadDatasetModal"
+import { Button } from "@/components/ui/button"
 
-// ─── Dummy data ───────────────────────────────────────────────────────────────
-const METRICS = [
-  {
-    label:    "Total Revenue",
-    value:    "EGP 284,390",
-    change:   "+18.2%",
-    up:       true,
-    sub:      "vs last month",
-    icon:     DollarSign,
-    accent:   true,
-  },
-  {
-    label:    "Customers",
-    value:    "1,284",
-    change:   "+9.4%",
-    up:       true,
-    sub:      "active records",
-    icon:     Users,
-    href:     "/dashboard/customers",
-  },
-  {
-    label:    "Products",
-    value:    "347",
-    change:   "+3",
-    up:       true,
-    sub:      "in catalog",
-    icon:     Package,
-    href:     "/dashboard/products",
-  },
-  {
-    label:    "Orders",
-    value:    "2,841",
-    change:   "-2.1%",
-    up:       false,
-    sub:      "this month",
-    icon:     ShoppingCart,
-  },
-]
+// ─── Helper: Metric Icon Mapping ──────────────────────────────────────────────
+const ICON_MAP = {
+  revenue: DollarSign,
+  customers: Users,
+  products: Package,
+  orders: ShoppingCart,
+}
 
+// ─── Loading Skeleton ────────────────────────────────────────────────────────
+function MetricSkeleton() {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="h-40 rounded-2xl bg-gray-100 animate-pulse border border-gray-200" />
+      ))}
+    </div>
+  )
+}
 const RECENT_ORDERS = [
   { id: "#ORD-9821", customer: "Sara Ali",       amount: "EGP 1,240", status: "completed", time: "2m ago" },
   { id: "#ORD-9820", customer: "Mohamed Hassan", amount: "EGP 890",   status: "pending",   time: "14m ago" },
@@ -149,13 +129,66 @@ function RevenueChart() {
 export default function DashboardPage() {
   const [greeting, setGreeting] = useState("Good morning")
   const [uploadOpen, setUploadOpen] = useState(false)
-
+  const [metrics, setMetrics] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const h = new Date().getHours()
-    if (h < 12) setGreeting("Good morning")
-    else if (h < 17) setGreeting("Good afternoon")
-    else setGreeting("Good evening")
+    const fetchMetrics = async () => {
+      try {
+        setLoading(true)
+        const res = await fetch(`/api/metrics`)
+        const data = await res.json()
+
+        if (!data || data.error) throw new Error(data.error || "Failed to fetch")
+
+        // Transform the API Object { customers: 10, ... } into UI Array [...]
+        const formatted = [
+          {
+            type: "revenue",
+            label: "Total Revenue",
+            value: `EGP ${Number(data.revenue).toLocaleString()}`,
+            change: "+12.5%", // Static for now, requires historical DB comparison
+            up: true,
+            sub: "all time",
+          },
+          {
+            type: "customers",
+            label: "Customers",
+            value: data.customers.toLocaleString(),
+            change: "+3.2%",
+            up: true,
+            sub: "active records",
+            href: "/dashboard/customers",
+          },
+          {
+            type: "products",
+            label: "Products",
+            value: data.products.toLocaleString(),
+            change: "+2",
+            up: true,
+            sub: "in catalog",
+            href: "/dashboard/products",
+          },
+          {
+            type: "orders",
+            label: "Orders",
+            value: data.orders.toLocaleString(),
+            change: "-1.4%",
+            up: false,
+            sub: "processed",
+            href: "/dashboard/orders",
+          },
+        ]
+        setMetrics(formatted)
+      } catch (error) {
+        console.error("Metric Fetch Error:", error)
+        setMetrics([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchMetrics()
   }, [])
 
   return (
@@ -169,14 +202,14 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           {QUICK_ACTIONS.map(a => (
-            <Link
-              key={a.label}
-              href={a.href}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white transition-colors shadow-sm ${a.color}`}
-            >
-              <a.icon size={14} />
-              <span className="hidden sm:inline">{a.label}</span>
-            </Link>
+            <Button key={a.label} variant={"fuseMain"} asChild>
+              <Link
+                href={a.href}
+              >
+                <a.icon size={14} />
+                <span className="hidden sm:inline">{a.label}</span>
+              </Link>
+            </Button>
           ))}
         </div>
       </div>
@@ -190,47 +223,62 @@ export default function DashboardPage() {
       <UploadDatasetModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
 
       {/* Metric cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {METRICS.map(m => {
-          const Icon = m.icon
-          const card = (
-            <div className={`rounded-2xl p-5 border flex flex-col gap-4 transition-all hover:shadow-md
-              ${m.accent ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-100 text-gray-900"}`}>
-              <div className="flex items-center justify-between">
-                <div className={`p-2 rounded-xl ${m.accent ? "bg-indigo-500" : "bg-gray-50"}`}>
-                  <Icon size={16} className={m.accent ? "text-white" : "text-indigo-600"} />
+      {loading ? (
+          <MetricSkeleton />
+        ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {metrics.map((m, idx) => {
+            const Icon = ICON_MAP[m.type as keyof typeof ICON_MAP] || Activity
+            const isAccent = m.type === "revenue"
+
+            const cardContent = (
+              <div className={`rounded-2xl p-5 border flex flex-col gap-4 transition-all hover:shadow-md h-full
+                ${isAccent ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-100 text-gray-900"}`}>
+                
+                <div className="flex items-center justify-between">
+                  <div className={`p-2 rounded-xl ${isAccent ? "bg-indigo-500" : "bg-gray-50"}`}>
+                    <Icon size={16} className={isAccent ? "text-white" : "text-indigo-600"} />
+                  </div>
+                  <Sparkline up={m.up} />
                 </div>
-                <Sparkline up={m.up} />
-              </div>
-              <div>
-                <p className={`text-2xl font-bold ${m.accent ? "text-white" : "text-gray-900"}`}>{m.value}</p>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className={`text-xs font-medium flex items-center gap-0.5
-                    ${m.up
-                      ? m.accent ? "text-emerald-300" : "text-emerald-600"
-                      : m.accent ? "text-red-300" : "text-red-500"
-                    }`}>
-                    {m.up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-                    {m.change}
-                  </span>
-                  <span className={`text-xs ${m.accent ? "text-indigo-200" : "text-gray-400"}`}>{m.sub}</span>
+
+                <div>
+                  <p className={`text-2xl font-bold ${isAccent ? "text-white" : "text-gray-900"}`}>{m.value}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className={`text-xs font-medium flex items-center gap-0.5
+                      ${m.up
+                        ? isAccent ? "text-emerald-300" : "text-emerald-600"
+                        : isAccent ? "text-red-300" : "text-red-500"
+                      }`}>
+                      {m.up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+                      {m.change}
+                    </span>
+                    <span className={`text-xs ${isAccent ? "text-indigo-200" : "text-gray-400"}`}>{m.sub}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-auto">
+                  <p className={`text-xs font-medium ${isAccent ? "text-indigo-200" : "text-gray-500"}`}>{m.label}</p>
+                  {m.href && !isAccent && (
+                    <ArrowUpRight size={13} className="text-gray-300 group-hover:text-indigo-500" />
+                  )}
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <p className={`text-xs font-medium ${m.accent ? "text-indigo-200" : "text-gray-500"}`}>{m.label}</p>
-                {m.href && !m.accent && (
-                  <ArrowUpRight size={13} className="text-gray-300 group-hover:text-indigo-500" />
-                )}
+            )
+
+            return m.href ? (
+              <Link key={idx} href={m.href} className="group block h-full">
+                {cardContent}
+              </Link>
+            ) : (
+              <div key={idx} className="h-full">
+                {cardContent}
               </div>
-            </div>
-          )
-          return m.href ? (
-            <Link key={m.label} href={m.href} className="group block">{card}</Link>
-          ) : (
-            <div key={m.label}>{card}</div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+        )
+      }
 
       {/* Revenue chart + Activity */}
       <div className="grid lg:grid-cols-3 gap-6">

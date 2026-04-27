@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const role = ownedBusiness.length ? "owner" : memberBusiness[0].role;
 
-  const response = NextResponse.json({ success: true });
+  const response = NextResponse.json({businessId, role}, { status: 200 });
 
   response.cookies.set("business_ctx", JSON.stringify({ userId, businessId, role }), {
       httpOnly: true,
