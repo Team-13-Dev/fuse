@@ -12,7 +12,7 @@ import { ProductDetailDialog, Product } from "@/app/components/crm/products/Prod
 import { DeleteProductDialog } from "@/app/components/crm/products/DeleteProductDialog"
 import { Category } from "@/app/components/crm/categories/CategoryDialog"
 
-type RawProduct = InferSelectModel<typeof product>
+// type RawProduct = InferSelectModel<typeof product>
 
 // ─── Role hook ────────────────────────────────────────────────────────────────
 function useBusinessRole() {
@@ -142,6 +142,16 @@ export default function ProductsPage() {
   const [deleteProduct,  setDeleteProduct]  = useState<Product | null>(null)
   const [deleteLoading,  setDeleteLoading]  = useState(false)
 
+  const [page, setPage] = useState(1)
+  const [pagination, setPagination] = useState<{
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+    hasNext: boolean
+    hasPrev: boolean
+  } | null>(null);
+
   const searchRef = useRef<HTMLInputElement>(null)
   const { toasts, push, dismiss } = useToast()
 
@@ -166,8 +176,10 @@ export default function ProductsPage() {
   useEffect(() => {
     fetch("/api/categories")
       .then(r => r.ok ? r.json() : [])
-      .then(setCategories)
-      .catch(() => {})
+      .then(json => setCategories(json?.data ?? []))
+      .catch((error) => {
+        console.error(error)
+      })
   }, [])
 
   // ── Fetch products ──────────────────────────────────────────────────────────
@@ -175,20 +187,42 @@ export default function ProductsPage() {
     setLoading(true)
     try {
       const qs = new URLSearchParams()
-      if (dSearch)     qs.set("search", dSearch)
-      if (stockFilter) qs.set("stock",  stockFilter)
+
+      if (dSearch) qs.set("search", dSearch)
+      if (stockFilter) qs.set("stock", stockFilter)
+
+      qs.set("page", String(page))
+      qs.set("limit", "20") // you can make this dynamic later
+
       const res = await fetch(`/api/products?${qs}`)
-      if (res.status === 401) { push("Session expired — please refresh", "error"); return }
+
+      if (res.status === 401) {
+        push("Session expired — please refresh", "error")
+        return
+      }
+
       if (!res.ok) throw new Error()
-      setProducts(await res.json())
+
+      const json = await res.json()
+
+      setProducts(json.data)           // ✅ FIXED
+      setPagination(json.pagination)   // ✅ NEW
+
     } catch {
       push("Failed to load products", "error")
     } finally {
       setLoading(false)
     }
+  }, [dSearch, stockFilter, page])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
+
+  useEffect(() => {
+    setPage(1)
   }, [dSearch, stockFilter])
 
-  useEffect(() => { fetchProducts() }, [fetchProducts])
 
   // ── Fetch category assignments for a product when opening edit/detail ────────
   async function loadProductCategories(productId: string): Promise<string[]> {
@@ -215,7 +249,7 @@ export default function ProductsPage() {
   }
 
   // ── Metrics ─────────────────────────────────────────────────────────────────
-  const total      = products.length
+  const total = pagination?.total ?? 0;
   const totalValue = products.reduce((acc, p) => acc + Number(p.price) * (p.stock ?? 0), 0)
   const outOfStock = products.filter(p => (p.stock ?? 0) === 0).length
   const avgMargin  = (() => {
@@ -225,10 +259,16 @@ export default function ProductsPage() {
   })()
 
   // Flatten category tree for name lookup
-  function flattenTree(nodes: Category[]): Category[] {
-    return nodes.flatMap(n => [n, ...flattenTree(n.children ?? [])])
+  function flatten(nodes: Category[] | undefined | null): Category[] {
+    if (!Array.isArray(nodes)) return [];
+
+    return nodes.reduce<Category[]>((acc, n) => {
+      return [...acc, n, ...flatten(n.children)];
+    }, []);
   }
-  const flatCats = flattenTree(categories)
+
+  const flatCats = flatten(categories ?? [])
+
   function getCatNames(productId: string): string[] {
     const ids = productCatMap[productId] ?? []
     return ids.map(id => flatCats.find(c => c.id === id)?.name).filter(Boolean) as string[]
@@ -441,6 +481,33 @@ export default function ProductsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-50">
+            
+            <span className="text-xs text-gray-400">
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                disabled={!pagination.hasPrev}
+                onClick={() => setPage(p => p - 1)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40"
+              >
+                Prev
+              </button>
+
+              <button
+                disabled={!pagination.hasNext}
+                onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

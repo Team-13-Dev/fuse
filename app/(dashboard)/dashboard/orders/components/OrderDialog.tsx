@@ -50,7 +50,10 @@ export function OrderDialog({ open, onOpenChange, onSave, canWrite }: Props) {
       if (!custSearch.trim()) return setCustomers([])
       setSearching(s => ({ ...s, cust: true }))
       const res = await fetch(`/api/customers?search=${encodeURIComponent(custSearch)}&limit=5`)
-      if (res.ok) setCustomers(await res.json())
+      if (res.ok) {
+        const json = await res.json()
+        setCustomers(json.data ?? [])
+      }
       setSearching(s => ({ ...s, cust: false }))
     }, 400)
     return () => clearTimeout(delay)
@@ -61,7 +64,10 @@ export function OrderDialog({ open, onOpenChange, onSave, canWrite }: Props) {
       if (!prodSearch.trim()) return setProducts([])
       setSearching(s => ({ ...s, prod: true }))
       const res = await fetch(`/api/products?search=${encodeURIComponent(prodSearch)}&limit=5`)
-      if (res.ok) setProducts(await res.json())
+      if (res.ok) {
+        const json = await res.json()
+        setProducts(json.data ?? [])
+      }
       setSearching(s => ({ ...s, prod: false }))
     }, 400)
     return () => clearTimeout(delay)
