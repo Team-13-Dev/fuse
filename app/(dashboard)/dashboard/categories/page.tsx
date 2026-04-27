@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Folder, FolderOpen, Plus, Search, X, RefreshCw,
-  ChevronRight, ChevronDown, AlertTriangle, Loader2, Tag,
+  ChevronRight, ChevronDown, ChevronLeft, AlertTriangle, Loader2, Tag,
 } from "lucide-react"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -180,19 +180,36 @@ function CategoryNode({
   )
 }
 
+// ─── Pagination Type ──────────────────────────────────────────────────────────
+type PaginationData = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CategoriesPage() {
   const role      = useBusinessRole()
   const canWrite  = role === "owner" || role === "manager"
   const canDelete = role === "owner"
 
-  const [categories,    setCategories]    = useState<Category[]>([])
-  const [flatAll,       setFlatAll]       = useState<Category[]>([]) // flat list for selectors
-  const [loading,       setLoading]       = useState(true)
-  const [search,        setSearch]        = useState("")
-  const [dSearch,       setDSearch]       = useState("")
+  // Data states
+  const [categories,     setCategories]     = useState<Category[]>([])
+  const [treeCategories, setTreeCategories] = useState<Category[]>([]) // Retains the full tree for the add/edit dialog selector
+  const [flatAll,        setFlatAll]        = useState<Category[]>([]) // Flat list computed from tree for accurate metrics
+  
+  // Pagination / Search states
+  const [pagination, setPagination] = useState<PaginationData | null>(null)
+  const [page,       setPage]       = useState(1)
+  const [search,     setSearch]     = useState("")
+  const [dSearch,    setDSearch]    = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
 
+  // UI states
+  const [loading,    setLoading]    = useState(true)
   const [addOpen,    setAddOpen]    = useState(false)
   const [editCat,    setEditCat]    = useState<Category | null>(null)
   const [deleteCat,  setDeleteCat]  = useState<Category | null>(null)
@@ -200,11 +217,16 @@ export default function CategoriesPage() {
 
   const { toasts, push, dismiss } = useToast()
 
+  // Debounce search and reset to page 1
   useEffect(() => {
-    const t = setTimeout(() => setDSearch(search), 300)
+    const t = setTimeout(() => {
+      setDSearch(search)
+      setPage(1)
+    }, 300)
     return () => clearTimeout(t)
   }, [search])
 
+  // Global hotkey for search
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {
@@ -215,32 +237,60 @@ export default function CategoriesPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  // ── Fetch tree ──────────────────────────────────────────────────────────────
+  // ── Fetch data ──────────────────────────────────────────────────────────────
   const fetchCategories = useCallback(async () => {
     setLoading(true)
     try {
-      const qs = new URLSearchParams()
-      if (dSearch) qs.set("search", dSearch)
-      // When searching, fetch flat so we don't lose matches nested in non-matching parents
-      if (dSearch) qs.set("flat", "true")
-      const [treeRes, flatRes] = await Promise.all([
-        fetch(`/api/categories?${qs}`),
-        fetch("/api/categories?flat=true"),
-      ])
-      if (!treeRes.ok || !flatRes.ok) throw new Error("Failed to fetch")
+      if (dSearch) {
+        // Fetch paginated search results AND the full tree (for accurate dialogs/metrics)
+        const qs = new URLSearchParams({ search: dSearch, flat: "true", page: page.toString(), limit: "20" })
+        
+        const [searchRes, treeRes] = await Promise.all([
+          fetch(`/api/categories?${qs.toString()}`),
+          fetch(`/api/categories`), 
+        ])
+        
+        if (!searchRes.ok || !treeRes.ok) throw new Error("Failed to fetch")
 
-      const treeData: Category[] = await treeRes.json()
-      const flatData: Category[] = await flatRes.json()
+        const searchJson = await searchRes.json()
+        const treeJson   = await treeRes.json()
 
-      // When searching, server returns flat — wrap in pseudo-roots for display
-      setCategories(dSearch ? treeData.map(c => ({ ...c, children: [] })) : treeData)
-      setFlatAll(flatData)
+        // Wrap flat paginated items in pseudo-roots
+        setCategories(searchJson.data.map((c: Category) => ({ ...c, children: [] })))
+        setPagination(searchJson.pagination)
+        setTreeCategories(treeJson.data)
+        
+        // Flatten tree locally for accurate top-level metrics regardless of search state
+        function flatten(nodes: Category[]): Category[] {
+          return nodes.reduce<Category[]>((acc, n) => {
+            return [...acc, n, ...flatten(n.children || [])]
+          }, [])
+        }
+        setFlatAll(flatten(treeJson.data))
+      } else {
+        // Fetch full tree
+        const res = await fetch(`/api/categories`)
+        if (!res.ok) throw new Error("Failed to fetch")
+        
+        const json = await res.json()
+        
+        setCategories(json.data)
+        setPagination(null)
+        setTreeCategories(json.data)
+
+        function flatten(nodes: Category[]): Category[] {
+          return nodes.reduce<Category[]>((acc, n) => {
+            return [...acc, n, ...flatten(n.children || [])]
+          }, [])
+        }
+        setFlatAll(flatten(json.data))
+      }
     } catch {
       push("Failed to load categories", "error")
     } finally {
       setLoading(false)
     }
-  }, [dSearch])
+  }, [dSearch, page])
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
@@ -352,7 +402,7 @@ export default function CategoriesPage() {
       </div>
 
       {/* Tree card */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-50">
           <h2 className="text-sm font-semibold text-gray-800 shrink-0">
@@ -383,37 +433,67 @@ export default function CategoriesPage() {
         </div>
 
         {/* Tree body */}
-        {loading ? (
-          <div className="py-20 flex flex-col items-center gap-3 text-gray-400">
-            <RefreshCw size={22} className="animate-spin text-indigo-300" />
-            <span className="text-sm">Loading categories…</span>
-          </div>
-        ) : categories.length === 0 ? (
-          <div className="py-20 flex flex-col items-center gap-3 text-gray-400">
-            <Folder size={40} className="text-gray-200" />
-            <p className="text-sm font-medium text-gray-500">
-              {dSearch ? `No categories match "${dSearch}"` : "No categories yet"}
-            </p>
-            {!dSearch && canWrite && (
-              <button onClick={() => setAddOpen(true)}
-                className="text-sm text-indigo-600 hover:underline">
-                Add your first category
+        <div className="flex-1">
+          {loading ? (
+            <div className="py-20 flex flex-col items-center gap-3 text-gray-400">
+              <RefreshCw size={22} className="animate-spin text-indigo-300" />
+              <span className="text-sm">Loading categories…</span>
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="py-20 flex flex-col items-center gap-3 text-gray-400">
+              <Folder size={40} className="text-gray-200" />
+              <p className="text-sm font-medium text-gray-500">
+                {dSearch ? `No categories match "${dSearch}"` : "No categories yet"}
+              </p>
+              {!dSearch && canWrite && (
+                <button onClick={() => setAddOpen(true)}
+                  className="text-sm text-indigo-600 hover:underline">
+                  Add your first category
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="py-2">
+              {categories.map(cat => (
+                <CategoryNode
+                  key={cat.id}
+                  cat={cat}
+                  depth={0}
+                  onEdit={c  => setEditCat(c)}
+                  onDelete={c => setDeleteCat(c)}
+                  canWrite={canWrite}
+                  canDelete={canDelete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination footer (Search mode only) */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/50">
+            <span className="text-xs text-gray-500 font-medium">
+              Showing <span className="text-gray-900">{categories.length}</span> of <span className="text-gray-900">{pagination.total}</span> results
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={!pagination.hasPrev}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent transition"
+              >
+                <ChevronLeft size={16} />
               </button>
-            )}
-          </div>
-        ) : (
-          <div className="py-2">
-            {categories.map(cat => (
-              <CategoryNode
-                key={cat.id}
-                cat={cat}
-                depth={0}
-                onEdit={c  => setEditCat(c)}
-                onDelete={c => setDeleteCat(c)}
-                canWrite={canWrite}
-                canDelete={canDelete}
-              />
-            ))}
+              <span className="text-xs font-medium text-gray-600 px-2">
+                Page {pagination.page} / {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                disabled={!pagination.hasNext}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent transition"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -423,7 +503,7 @@ export default function CategoriesPage() {
         open={addOpen}
         onOpenChange={setAddOpen}
         onSave={handleCreate}
-        allCategories={categories}
+        allCategories={treeCategories} // Pass the full tree so dropdowns remain complete
         canWrite={canWrite}
       />
 
@@ -432,7 +512,7 @@ export default function CategoriesPage() {
         onOpenChange={v => { if (!v) setEditCat(null) }}
         onSave={handleUpdate}
         existing={editCat}
-        allCategories={categories}
+        allCategories={treeCategories}
         canWrite={canWrite}
       />
 

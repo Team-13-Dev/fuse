@@ -3,16 +3,15 @@ import { business, teamMember } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth"
+import { getBusinessContext } from "@/lib/get-business-context";
 
 export async function POST(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const ctx = await getBusinessContext(req);
 
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { businessId } = await req.json();
-  const userId = session.user.id;
+  const userId = ctx.userId;
 
   const ownedBusiness = await db
     .select({ id: business.id })

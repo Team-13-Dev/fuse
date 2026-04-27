@@ -138,6 +138,18 @@ export default function OrdersPage() {
   const [deleteOrder,   setDeleteOrder]   = useState<Order | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
+  const [page, setPage] = useState(1)
+  const [limit] = useState(20)
+
+  const [pagination, setPagination] = useState({
+    page: 1,
+    totalPages: 1,
+    total: 0,
+    hasNext: false,
+    hasPrev: false,
+  })
+
+
   const searchRef = useRef<HTMLInputElement>(null)
   const { toasts, push, dismiss } = useToast()
 
@@ -163,34 +175,40 @@ export default function OrdersPage() {
     setLoading(true)
     try {
       const qs = new URLSearchParams()
+
       if (dSearch)      qs.set("search", dSearch)
       if (statusFilter) qs.set("status", statusFilter)
-      if (dateFilter)   qs.set("date",   dateFilter)
+      if (dateFilter)   qs.set("date", dateFilter)
+
+      qs.set("page", String(page))
+      qs.set("limit", String(limit))
+
       const res = await fetch(`/api/orders?${qs}`)
       if (!res.ok) throw new Error()
 
       const data = await res.json()
 
-      // If your API returns { orders: [...] }
-      if (data && Array.isArray(data.orders)) {
-        setOrders(data.orders)
-      } 
-      // If your API returns [...]
-      else if (Array.isArray(data)) {
-        setOrders(data)
-      } 
-      else {
-        console.error("API did not return an array:", data)
-        setOrders([]) // Fallback to empty array to prevent crashes
+      // ✅ NEW SHAPE
+      if (data?.data && Array.isArray(data.data)) {
+        setOrders(data.data)
+        setPagination(data.pagination)
+      } else {
+        console.error("Unexpected API response:", data)
+        setOrders([])
       }
+
     } catch {
       push("Failed to load orders", "error")
     } finally {
       setLoading(false)
     }
-  }, [dSearch, statusFilter, dateFilter])
+  }, [dSearch, statusFilter, dateFilter, page, limit])
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
+
+  useEffect(() => {
+    setPage(1)
+  }, [dSearch, statusFilter, dateFilter])
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
  // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -226,7 +244,7 @@ const metrics = isOrdersArray
   : { revenue: 0, validOrderCount: 0, pendingCount: 0, totalCount: 0, allTotalSum: 0 };
 
   // ── Derived Values ──────────────────────────────────────────────────────────
-  const total        = metrics.totalCount;
+  const total = pagination.total;
   const totalRev     = metrics.revenue;
   const pending      = metrics.pendingCount;
 
@@ -459,6 +477,35 @@ const metrics = isOrdersArray
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-50">
+            
+            <div className="text-xs text-gray-400">
+              Page {pagination.page} of {pagination.totalPages}
+            </div>
+
+            <div className="flex items-center gap-2">
+              
+              <button
+                disabled={!pagination.hasPrev}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-200 duration-150"
+              >
+                Prev
+              </button>
+
+              <button
+                disabled={!pagination.hasNext}
+                onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-200 duration-150"
+              >
+                Next
+              </button>
+
+            </div>
           </div>
         )}
       </div>

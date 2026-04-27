@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { authClient } from "@/lib/auth-client"
-import { Bell, Search, Menu, X, ChevronRight, Store, Zap } from "lucide-react"
+import { Bell, Search, Menu, X, ChevronRight, Store, Zap, BotMessageSquare } from "lucide-react"
 import { Sidebar, NAV_SECTIONS } from "./Sidebar"
 import {
   SidebarStorePanel,
@@ -14,6 +14,7 @@ import {
   type SidebarBusiness,
   type SidebarUser,
 } from "./SidebarStorePanel"
+
 
 // ─── Mobile drawer ────────────────────────────────────────────────────────────
 function MobileDrawer({
@@ -200,6 +201,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-[#F7F7F8] overflow-hidden">
+
       <Sidebar
         businesses={businessesWithRole}
         activeBusinessId={activeBusinessId}
@@ -216,7 +218,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         user={user}
         onSwitch={handleSwitch}
       />
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        <Link href={"/chatbot"} className="rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center">
+          <BotMessageSquare className="text-xl"/>
+        </Link>
         <TopHeader
           user={user}
           activeBusiness={activeBusiness}

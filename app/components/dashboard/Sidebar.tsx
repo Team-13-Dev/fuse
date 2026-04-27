@@ -50,7 +50,7 @@ export const NAV_SECTIONS = [
   {
     label: "Platform",
     items: [
-      { label: "Web Builder",  href: "/dashboard/web-builder",  icon: Globe,        soon: true    },
+      { label: "Web Builder",  href: "/dashboard/web-builder",  icon: Globe  },
       { label: "Settings",     href: "/dashboard/settings",     icon: Settings,     soon: true    },
     ],
   },
