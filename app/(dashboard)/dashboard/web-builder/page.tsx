@@ -6,6 +6,25 @@ import {
   Trash2, GripVertical, Plus, Layers, X, ChevronRight, Palette, Type
 } from "lucide-react";
 
+type BlockType =
+  | "header"
+  | "hero"
+  | "products"
+  | "contact"
+  | "footer"
+  | "testimonials";
+
+type BlockTextMap = typeof DEFAULT_TEXT;
+
+type BlockInstance = {
+  instanceId: string;
+  type: BlockType;
+  accentColor?: string;
+  bgColor?: string;
+  text?: Partial<BlockTextMap[BlockType]>;
+};
+
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ACCENT_SWATCHES = [
   { name: "Violet",  value: "#7c3aed" }, { name: "Rose",    value: "#e11d48" },
@@ -22,7 +41,12 @@ const BG_SWATCHES = [
 const DEFAULT_ACCENT = "#7c3aed";
 const DEFAULT_BG = "#ffffff";
 
-const BLOCK_DEFS = [
+const BLOCK_DEFS : {
+  type: BlockType;
+  label: string;
+  icon: any;
+  description: string;
+}[] = [
   { type: "header",       label: "Header",       icon: Menu,          description: "Navigation bar" },
   { type: "hero",         label: "Hero",          icon: Square,        description: "Full-width banner" },
   { type: "products",     label: "Products",      icon: LayoutGrid,    description: "Product grid" },
@@ -31,7 +55,7 @@ const BLOCK_DEFS = [
   { type: "testimonials", label: "Testimonials",  icon: MessageSquare, description: "Customer reviews" },
 ];
 
-const DEFAULT_TEXT = {
+const DEFAULT_TEXT: Record<BlockType, any> = {
   header: { brand:"YourBrand", nav1:"Home", nav2:"About", nav3:"Services", nav4:"Contact", cta:"Get Started" },
   hero: { eyebrow:"Welcome to the future", heading:"Build Something Extraordinary", subheading:"Drag, drop, and compose beautiful pages in seconds with our intuitive visual builder.", primaryCta:"Start Building", secondaryCta:"Learn more" },
   products: { sectionLabel:"Featured Products", p1Name:"Pro Plan", p1Desc:"For individuals", p1Price:"$29", p2Name:"Team Plan", p2Desc:"Up to 10 members", p2Price:"$79", p2Badge:"Popular", p3Name:"Enterprise", p3Desc:"Unlimited scale", p3Price:"$199" },
@@ -40,7 +64,9 @@ const DEFAULT_TEXT = {
   testimonials: { sectionLabel:"What People Say", t1Name:"Sarah K.", t1Role:"Designer", t1Text:"Absolutely transformed how our team ships landing pages.", t2Name:"Marco R.", t2Role:"Developer", t2Text:"Incredibly fast workflow — days now take minutes." },
 };
 
-const TEXT_FIELDS = {
+const TEXT_FIELDS : Record<
+  BlockType,
+  { key: string; label: string; multiline?: boolean }[]> = {
   header: [
     { key:"brand", label:"Brand name" },
     { key:"nav1", label:"Nav 1" }, { key:"nav2", label:"Nav 2" }, { key:"nav3", label:"Nav 3" }, { key:"nav4", label:"Nav 4" },
@@ -76,7 +102,12 @@ const TEXT_FIELDS = {
   ],
 };
 
-function getText(block : any) { return { ...DEFAULT_TEXT[block.type], ...(block.text||{}) }; }
+function getText(block: BlockInstance) {
+  return {
+    ...DEFAULT_TEXT[block.type],
+    ...(block.text || {}),
+  };
+}
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 function hexToRgb(hex : string) {
@@ -89,7 +120,17 @@ function lighten(hex : string ,amt=0.9) {
 }
 
 // ── Edit Panel ────────────────────────────────────────────────────────────────
-function EditPanel({ block, onTextChange, onColorChange, onClose }: any) {
+function EditPanel({
+  block,
+  onTextChange,
+  onColorChange,
+  onClose,
+}: {
+  block: BlockInstance;
+  onTextChange: (id: string, key: string, value: string) => void;
+  onColorChange: (id: string, key: "accentColor" | "bgColor", value: string) => void;
+  onClose: () => void;
+}){
   const [tab, setTab] = useState("text");
   const text = getText(block);
   const fields = TEXT_FIELDS[block.type] || [];
@@ -134,8 +175,8 @@ function EditPanel({ block, onTextChange, onColorChange, onClose }: any) {
               <div key={f.key}>
                 <label style={{ display:"block", fontSize:10, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{f.label}</label>
                 {f.multiline
-                  ? <textarea value={text[f.key]??""} rows={3} onChange={e => onTextChange(block.instanceId, f.key, e.target.value)} style={inp} />
-                  : <input type="text" value={text[f.key]??""} onChange={e => onTextChange(block.instanceId, f.key, e.target.value)} style={inp} />
+                  ? <textarea value={text[f.key]??""} rows={3} onChange={e => onTextChange(block.instanceId, f.key, e.target.value)}  />
+                  : <input type="text" value={text[f.key]??""} onChange={e => onTextChange(block.instanceId, f.key, e.target.value)}  />
                 }
               </div>
             ))}
@@ -215,7 +256,7 @@ function SidebarBlock({ def, onHover, onLeave }: any) {
 // ── Canvas ────────────────────────────────────────────────────────────────────
 function Canvas({ blocks, onRemove, activeId, selectedId, onSelect, hoverPreviewType }: any) {
   const { setNodeRef, isOver } = useDroppable({ id:"canvas" });
-  const previewExists = blocks.some(b => b.type === hoverPreviewType);
+  const previewExists = blocks.some((b: any) => b.type === hoverPreviewType);
   return (
     <div ref={setNodeRef} style={{ minHeight:600, borderRadius:14, transition:"all 0.2s", background:isOver?"#f5f3ff":"#f8fafc", border:`1.5px ${isOver?"solid #7c3aed":"dashed #e2e8f0"}` }}>
       {blocks.length === 0 ? (
@@ -236,21 +277,34 @@ function Canvas({ blocks, onRemove, activeId, selectedId, onSelect, hoverPreview
         </div>
       )}
       {hoverPreviewType && !previewExists && (
-        <div style={{ opacity: 0.8, padding: 18 }}>
-          <RenderedBlock
-            type={hoverPreviewType}
-            accentColor={DEFAULT_ACCENT}
-            bgColor={DEFAULT_BG}
-            text={getText({ type: hoverPreviewType })}
-          />
-        </div>
-      )}
+          <div style={{ opacity: 0.8, padding: 18 }}>
+            <RenderedBlock
+              type={hoverPreviewType}
+              accentColor={DEFAULT_ACCENT}
+              bgColor={DEFAULT_BG}
+              text={getText({
+                instanceId: "preview",
+                type: hoverPreviewType,
+              })}
+            />
+          </div>
+        )}
     </div>
   );
 }
 
 // ── Canvas Block ──────────────────────────────────────────────────────────────
-function CanvasBlock({ block, onRemove, onSelect, isSelected } : any) {
+function CanvasBlock({
+  block,
+  onRemove,
+  onSelect,
+  isSelected,
+}: {
+  block: BlockInstance;
+  onRemove: (id: string) => void;
+  onSelect: (id: string) => void;
+  isSelected: boolean;
+}) {
   const [hovered, setHovered] = useState(false);
   return (
     <div
@@ -278,7 +332,17 @@ function CanvasBlock({ block, onRemove, onSelect, isSelected } : any) {
 }
 
 // ── Block Renderers ───────────────────────────────────────────────────────────
-function RenderedBlock({ type, accentColor, bgColor, text } : any) {
+function RenderedBlock({
+  type,
+  accentColor,
+  bgColor,
+  text,
+}: {
+  type: BlockType;
+  accentColor: string;
+  bgColor: string;
+  text: any;
+}){
   const accentLight  = lighten(accentColor, 0.88);
   const accentSoft   = withAlpha(accentColor, 0.08);
   const accentMid    = withAlpha(accentColor, 0.15);
@@ -411,7 +475,7 @@ function RenderedBlock({ type, accentColor, bgColor, text } : any) {
 }
 
 // ── Drag Ghost ────────────────────────────────────────────────────────────────
-function DragGhost({ type } : any) {
+function DragGhost({ type }: { type: BlockType | null }) {
   if (!type) return null;
   const def = BLOCK_DEFS.find(d => d.type === type);
   if (!def) return null;
@@ -425,13 +489,14 @@ function DragGhost({ type } : any) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function WebsiteBuilder() {
-  const [hoverPreviewType, setHoverPreviewType] = useState<string | null>(null);
-  const [blocks, setBlocks] = useState([
-    { instanceId:"init-header", type:"header", accentColor:DEFAULT_ACCENT, bgColor:DEFAULT_BG, text:{} },
-    { instanceId:"init-hero",   type:"hero",   accentColor:DEFAULT_ACCENT, bgColor:DEFAULT_BG, text:{} },
+  const [blocks, setBlocks] = useState<BlockInstance[]>([
+    { instanceId: "init-header", type: "header", accentColor: DEFAULT_ACCENT, bgColor: DEFAULT_BG, text: {} },
+    { instanceId: "init-hero", type: "hero", accentColor: DEFAULT_ACCENT, bgColor: DEFAULT_BG, text: {} },
   ]);
-  const [activeType, setActiveType]   = useState(null);
-  const [selectedId, setSelectedId]   = useState(null);
+
+  const [activeType, setActiveType] = useState<BlockType | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoverPreviewType, setHoverPreviewType] = useState<BlockType | null>(null);
 
   const selectedBlock = blocks.find(b => b.instanceId === selectedId) || null;
 
@@ -475,7 +540,7 @@ export default function WebsiteBuilder() {
               <SidebarBlock 
                 key={def.type} 
                 def={def} 
-                onHover={(type: string) => setHoverPreviewType(type)}
+                onHover={(type: BlockType) => setHoverPreviewType(type)}
                 onLeave={() => setHoverPreviewType(null)}
               />
             ))}
