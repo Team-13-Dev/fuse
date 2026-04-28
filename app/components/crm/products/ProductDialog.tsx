@@ -2,15 +2,11 @@
 
 import { useState, useEffect, useRef } from "react"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog"
 import { InferSelectModel, InferInsertModel } from "drizzle-orm"
 import { product } from "@/db/schema"
-import { Loader2, X, Tag } from "lucide-react"
+import { Loader2, X, Tag, Package, DollarSign, Layers, FileText, ChevronDown, ChevronUp } from "lucide-react"
 import { Category } from "../categories/CategoryDialog"
 
 export type Product    = InferSelectModel<typeof product>
@@ -22,81 +18,67 @@ type NullifyUndefined<T> = {
 
 export type ProductFormData = NullifyUndefined<
   Omit<NewProduct, "id" | "businessId" | "externalAccId" | "lastReprice" | "prediction" | "imagesUrl">
-> & {
-  categoryIds: string[]
-}
-
-// ─── Validation ───────────────────────────────────────────────────────────────
-function validate(form: ProductFormData) {
-  const errors: Partial<Record<keyof ProductFormData, string>> = {}
-
-  if (!form.name.trim()) errors.name = "Product name is required"
-  else if (form.name.trim().length < 2) errors.name = "Must be at least 2 characters"
-
-  const priceNum = Number(form.price)
-  if (form.price === null || form.price === "" || isNaN(priceNum))
-    errors.price = "A valid price is required"
-  else if (priceNum < 0) errors.price = "Price cannot be negative"
-  else if (priceNum > 999_999_999.99) errors.price = "Price exceeds maximum allowed value"
-
-  if (form.cost !== null && form.cost !== "") {
-    const costNum = Number(form.cost)
-    if (isNaN(costNum)) errors.cost = "Enter a valid cost"
-    else if (costNum < 0) errors.cost = "Cost cannot be negative"
-  }
-
-  if (form.stock !== null && form.stock !== undefined) {
-    const stockNum = Number(form.stock)
-    if (isNaN(stockNum) || !Number.isInteger(stockNum)) errors.stock = "Stock must be a whole number"
-    else if (stockNum < 0) errors.stock = "Stock cannot be negative"
-  }
-
-  return errors
-}
-
-  // ─── Flatten tree for display ─────────────────────────────────────────────────
-  type FlatCategory = Category & { depth: number }
-
-  function flattenCategories(
-    nodes: Category[] | undefined | null,
-    depth = 0
-  ): FlatCategory[] {
-    if (!Array.isArray(nodes)) return []
-
-    return nodes.flatMap((n) => [
-      { ...n, depth },
-      ...flattenCategories(n.children, depth + 1),
-    ])
-  }
-
-type Props = {
-  open:          boolean
-  onOpenChange:  (open: boolean) => void
-  onSave:        (data: ProductFormData) => Promise<void>
-  existing?:     Product | null
-  existingCategoryIds?: string[]
-  canWrite:      boolean
-  categories:    Category[]   // full category tree
-}
+> & { categoryIds: string[] }
 
 const EMPTY: ProductFormData = {
-  name:        "",
-  price:       "0",
-  description: null,
-  stock:       0,
-  cost:        null,
-  categoryIds: [],
+  name: "", price: "0", description: null, stock: 0, cost: null, categoryIds: [],
+}
+
+function validate(form: ProductFormData) {
+  const e: Partial<Record<keyof ProductFormData, string>> = {}
+  if (!form.name.trim())                        e.name  = "Product name is required"
+  else if (form.name.trim().length < 2)          e.name  = "Must be at least 2 characters"
+  const p = Number(form.price)
+  if (form.price === null || form.price === "" || isNaN(p))   e.price = "A valid price is required"
+  else if (p < 0)                                e.price = "Price cannot be negative"
+  if (form.cost !== null && form.cost !== "") {
+    const c = Number(form.cost)
+    if (isNaN(c))  e.cost = "Enter a valid cost"
+    else if (c < 0) e.cost = "Cost cannot be negative"
+    else if (c > p) e.cost = "Cost cannot exceed the selling price"
+  }
+  if (form.stock !== null && form.stock !== undefined) {
+    const s = Number(form.stock)
+    if (isNaN(s) || !Number.isInteger(s))  e.stock = "Stock must be a whole number"
+    else if (s < 0)                         e.stock = "Stock cannot be negative"
+  }
+  return e
+}
+
+function flattenTree(nodes: unknown, depth = 0): { cat: Category; depth: number }[] {
+  const result: { cat: Category; depth: number }[] = []
+  if (!Array.isArray(nodes)) return result
+  for (const node of nodes) {
+    result.push({ cat: node, depth })
+    if (node.children?.length) result.push(...flattenTree(node.children, depth + 1))
+  }
+  return result
+}
+
+type Props = {
+  open:               boolean
+  onOpenChange:       (v: boolean) => void
+  onSave:             (data: ProductFormData) => Promise<void>
+  existing?:          Product | null
+  existingCategoryIds?: string[]
+  canWrite:           boolean
+  categories:         Category[]
 }
 
 export function ProductDialog({ open, onOpenChange, onSave, existing, existingCategoryIds, canWrite, categories }: Props) {
-  const [form,     setForm]     = useState<ProductFormData>(EMPTY)
-  const [errors,   setErrors]   = useState<Partial<Record<keyof ProductFormData, string>>>({})
-  const [saving,   setSaving]   = useState(false)
-  const [apiError, setApiError] = useState<string | null>(null)
+  const [form,      setForm]      = useState<ProductFormData>(EMPTY)
+  const [errors,    setErrors]    = useState<Partial<Record<keyof ProductFormData, string>>>({})
+  const [saving,    setSaving]    = useState(false)
+  const [apiError,  setApiError]  = useState<string | null>(null)
+  const [catOpen,   setCatOpen]   = useState(false)
   const [catSearch, setCatSearch] = useState("")
   const nameRef = useRef<HTMLInputElement>(null)
+  const isEdit  = !!existing
 
-  const isEdit = !!existing
+  // Derived margin preview
+  const price  = Number(form.price)
+  const cost   = form.cost !== null && form.cost !== "" ? Number(form.cost) : null
+  const margin = cost !== null && price > 0 ? ((price - cost) / price) * 100 : null
 
   useEffect(() => {
     if (!open) return
@@ -108,29 +90,23 @@ export function ProductDialog({ open, onOpenChange, onSave, existing, existingCa
       cost:        existing.cost,
       categoryIds: existingCategoryIds ?? [],
     } : EMPTY)
-    setErrors({}); setApiError(null); setCatSearch("")
+    setErrors({}); setApiError(null); setCatSearch(""); setCatOpen(false)
   }, [open, existing, existingCategoryIds])
 
   useEffect(() => {
-    if (open) {
-      const t = setTimeout(() => nameRef.current?.focus(), 80)
-      return () => clearTimeout(t)
-    }
+    if (open) { const t = setTimeout(() => nameRef.current?.focus(), 80); return () => clearTimeout(t) }
   }, [open])
 
-  function setField<K extends keyof ProductFormData>(field: K, value: ProductFormData[K]) {
-    setForm(prev => ({ ...prev, [field]: value }))
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: undefined }))
+  function setField<K extends keyof ProductFormData>(k: K, v: ProductFormData[K]) {
+    setForm(p => ({ ...p, [k]: v }))
+    if (errors[k]) setErrors(p => ({ ...p, [k]: undefined }))
     if (apiError) setApiError(null)
   }
 
-  function toggleCategory(catId: string) {
-    setField(
-      "categoryIds",
-      form.categoryIds.includes(catId)
-        ? form.categoryIds.filter(id => id !== catId)
-        : [...form.categoryIds, catId]
-    )
+  function toggleCat(id: string) {
+    setField("categoryIds", form.categoryIds.includes(id)
+      ? form.categoryIds.filter(c => c !== id)
+      : [...form.categoryIds, id])
   }
 
   async function handleSave() {
@@ -147,228 +123,228 @@ export function ProductDialog({ open, onOpenChange, onSave, existing, existingCa
         stock: form.stock !== null ? Math.trunc(Number(form.stock)) : 0,
       })
     } catch (err: unknown) {
-      setApiError(err instanceof Error ? err.message : "Something went wrong — please try again")
+      setApiError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
       setSaving(false)
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLInputElement && e.currentTarget !== e.target)) {
-      handleSave()
-    }
-  }
-
-  const inputCls = (field: keyof ProductFormData) =>
-    `w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500 transition
+  const inp = (field: keyof ProductFormData) =>
+    `w-full border rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition
      disabled:opacity-50 disabled:cursor-not-allowed
-     ${errors[field] ? "border-red-400 focus:ring-red-400" : "border-border"}`
+     ${errors[field] ? "border-red-400 focus:ring-red-400" : "border-gray-200"}`
 
-  const allFlat = flattenCategories(categories)
-
-  const flatCats = allFlat.filter(cat =>
+  const flatCats = flattenTree(categories).filter(({ cat }) =>
     !catSearch || cat.name.toLowerCase().includes(catSearch.toLowerCase())
   )
-  
+  const allFlat     = flattenTree(categories)
   const selectedCats = form.categoryIds
-    .map(id => allFlat.find(cat => cat.id === id))
-    .filter(Boolean) as FlatCategory[]
+    .map(id => allFlat.find(({ cat }) => cat.id === id)?.cat)
+    .filter(Boolean) as Category[]
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!saving) onOpenChange(v) }}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" onKeyDown={handleKeyDown}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit product" : "Add new product"}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <Package size={13} className="text-indigo-600" />
+            </div>
+            {isEdit ? "Edit Product" : "Add New Product"}
+          </DialogTitle>
           <DialogDescription>
-            {isEdit ? `Editing "${existing?.name}"` : "Fill in the details to create a new product."}
+            {isEdit ? `Editing "${existing?.name}"` : "Fill in the details below to add a product to your catalog."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
+        <div className="flex flex-col gap-4 py-2">
           {apiError && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 flex items-start gap-2">
+              <X size={14} className="shrink-0 mt-0.5" />
               {apiError}
             </div>
           )}
 
           {/* Name */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">
-              Product name <span className="text-red-500">*</span>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-gray-800">
+              Product name <span className="text-red-400">*</span>
             </label>
             <input
               ref={nameRef}
               value={form.name}
               onChange={e => setField("name", e.target.value)}
-              placeholder="e.g. Wireless Headphones"
+              placeholder="e.g. Summer Linen Shirt"
               maxLength={255}
               disabled={!canWrite || saving}
-              className={inputCls("name")}
+              className={inp("name")}
             />
             {errors.name && <span className="text-xs text-red-500">{errors.name}</span>}
           </div>
 
-          {/* Price & Cost */}
+          {/* Price + Cost */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Price (EGP) <span className="text-red-500">*</span></label>
-              <input
-                type="number" min="0" step="0.01"
-                value={form.price ?? ""}
-                onChange={e => setField("price", e.target.value)}
-                placeholder="0.00"
-                disabled={!canWrite || saving}
-                className={inputCls("price")}
-              />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-800">
+                Selling price (EGP) <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <DollarSign size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.price ?? ""}
+                  onChange={e => setField("price", e.target.value)}
+                  placeholder="0.00"
+                  disabled={!canWrite || saving}
+                  className={`${inp("price")} pl-8`}
+                />
+              </div>
               {errors.price && <span className="text-xs text-red-500">{errors.price}</span>}
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Cost (EGP)</label>
-              <input
-                type="number" min="0" step="0.01"
-                value={form.cost ?? ""}
-                onChange={e => setField("cost", e.target.value || null)}
-                placeholder="0.00"
-                disabled={!canWrite || saving}
-                className={inputCls("cost")}
-              />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-800">
+                Cost price (EGP)
+                <span className="text-xs font-normal text-gray-400 ml-1">optional</span>
+              </label>
+              <div className="relative">
+                <Tag size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="number" min="0" step="0.01"
+                  value={form.cost ?? ""}
+                  onChange={e => setField("cost", e.target.value || null)}
+                  placeholder="0.00"
+                  disabled={!canWrite || saving}
+                  className={`${inp("cost")} pl-8`}
+                />
+              </div>
               {errors.cost && <span className="text-xs text-red-500">{errors.cost}</span>}
             </div>
           </div>
 
+          {/* Margin preview */}
+          {margin !== null && (
+            <div className={`flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-sm
+              ${margin >= 40 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : margin >= 20 ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-red-50 text-red-700 border border-red-200"}`}>
+              <span className="font-semibold">Profit margin: {margin.toFixed(1)}%</span>
+              <span className="text-xs opacity-70">
+                (EGP {(price - (cost ?? 0)).toFixed(2)} per unit)
+              </span>
+            </div>
+          )}
+
           {/* Stock */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Stock quantity</label>
-            <input
-              type="number" min="0" step="1"
-              value={form.stock ?? ""}
-              onChange={e => setField("stock", e.target.value !== "" ? Number(e.target.value) : 0)}
-              placeholder="0"
-              disabled={!canWrite || saving}
-              className={inputCls("stock")}
-            />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-gray-800">Stock quantity</label>
+            <div className="relative">
+              <Layers size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="number" min="0" step="1"
+                value={form.stock ?? ""}
+                onChange={e => setField("stock", e.target.value !== "" ? Number(e.target.value) : 0)}
+                placeholder="0"
+                disabled={!canWrite || saving}
+                className={`${inp("stock")} pl-8`}
+              />
+            </div>
             {errors.stock && <span className="text-xs text-red-500">{errors.stock}</span>}
           </div>
 
           {/* Description */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Description</label>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-gray-800">
+              Description
+              <span className="text-xs font-normal text-gray-400 ml-1">optional</span>
+            </label>
             <textarea
               value={form.description ?? ""}
               onChange={e => setField("description", e.target.value || null)}
-              placeholder="Short product description..."
-              rows={2}
+              placeholder="Brief description of this product…"
+              rows={3}
               disabled={!canWrite || saving}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`${inp("description")} resize-none`}
             />
           </div>
 
-          {/* ── Category Picker ─────────────────────────────────────────── */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium flex items-center gap-1.5">
-                <Tag size={13} className="text-indigo-500" />
-                Categories
-              </label>
+          {/* Categories */}
+          {categories.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-800">Categories</label>
+
+              {/* Selected pills */}
               {selectedCats.length > 0 && (
-                <button
-                  onClick={() => setField("categoryIds", [])}
-                  className="text-xs text-muted-foreground hover:text-red-500 transition"
-                >
-                  Clear all
-                </button>
+                <div className="flex flex-wrap gap-1.5 mb-1">
+                  {selectedCats.map(cat => (
+                    <span key={cat.id}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 font-medium">
+                      {cat.name}
+                      <button type="button" onClick={() => toggleCat(cat.id)} className="hover:opacity-60">
+                        <X size={10}/>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCatOpen(v => !v)}
+                disabled={!canWrite || saving}
+                className="flex items-center justify-between px-3.5 py-2.5 text-sm border border-gray-200
+                  rounded-xl hover:border-indigo-300 transition text-gray-600 bg-white"
+              >
+                <span>{selectedCats.length ? `${selectedCats.length} selected` : "Select categories"}</span>
+                {catOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+              </button>
+
+              {catOpen && (
+                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="p-2 border-b border-gray-100">
+                    <input
+                      value={catSearch}
+                      onChange={e => setCatSearch(e.target.value)}
+                      placeholder="Search categories…"
+                      className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg
+                        focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto">
+                    {flatCats.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-3">No categories found</p>
+                    ) : flatCats.map(({ cat, depth }) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => toggleCat(cat.id)}
+                        className={`w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-indigo-50 transition
+                          ${form.categoryIds.includes(cat.id) ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-700"}`}
+                        style={{ paddingLeft: `${12 + depth * 16}px` }}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center
+                          ${form.categoryIds.includes(cat.id) ? "bg-indigo-600 border-indigo-600" : "border-gray-300"}`}>
+                          {form.categoryIds.includes(cat.id) && (
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                              <path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          )}
+                        </span>
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-
-            {/* Selected pills */}
-            {selectedCats.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {selectedCats.map(cat => (
-                  <span
-                    key={cat.id}
-                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium"
-                  >
-                    {cat.name}
-                    {canWrite && (
-                      <button
-                        onClick={() => toggleCategory(cat.id)}
-                        className="hover:text-red-500 transition"
-                      >
-                        <X size={11} />
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Searchable category list */}
-            {categories.length > 0 && canWrite && (
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="px-2 py-1.5 border-b border-border bg-gray-50">
-                  <input
-                    value={catSearch}
-                    onChange={e => setCatSearch(e.target.value)}
-                    placeholder="Search categories..."
-                    className="w-full text-xs bg-transparent focus:outline-none"
-                    disabled={saving}
-                  />
-                </div>
-                <div className="max-h-36 overflow-y-auto">
-                  {flatCats.length === 0 ? (
-                    <p className="text-xs text-gray-400 px-3 py-3 text-center">No categories found</p>
-                  ) : (
-                    
-                    flatCats.map((cat) => {
-                      const selected = form.categoryIds.includes(cat.id)
-
-                      return (
-                        <button
-                          key={cat.id}
-                          onClick={() => toggleCategory(cat.id)}
-                          disabled={saving}
-                          className={`w-full text-left text-xs px-3 py-2 flex items-center gap-2 transition
-                            ${selected ? "bg-indigo-50 text-indigo-700" : "hover:bg-gray-50 text-gray-700"}`}
-                          style={{ paddingLeft: `${12 + cat.depth * 16}px` }}
-                        >
-                          <span
-                            className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition
-                              ${selected ? "bg-indigo-600 border-indigo-600" : "border-gray-300"}`}
-                          >
-                            {selected && (
-                              <svg viewBox="0 0 10 8" fill="none" className="w-2 h-2">
-                                <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" />
-                              </svg>
-                            )}
-                          </span>
-
-                          {cat.depth > 0 && <span className="text-gray-300 text-[10px]">└</span>}
-
-                          {cat.name}
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-
-            {categories.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                No categories exist yet.{" "}
-                <a href="/dashboard/categories" className="text-indigo-600 hover:underline">
-                  Add categories first →
-                </a>
-              </p>
-            )}
-          </div>
+          )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        {/* Footer */}
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-2">
           <button
-            onClick={() => { if (!saving) onOpenChange(false) }}
+            onClick={() => onOpenChange(false)}
             disabled={saving}
-            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition disabled:opacity-50"
+            className="px-4 py-2.5 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
           >
             Cancel
           </button>
@@ -376,10 +352,11 @@ export function ProductDialog({ open, onOpenChange, onSave, existing, existingCa
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-60 flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl
+                bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-60"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
-              {isEdit ? "Save changes" : "Add product"}
+              {saving ? "Saving…" : isEdit ? "Save changes" : "Add product"}
             </button>
           )}
         </div>

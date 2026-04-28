@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { product, orderItem, order, customer } from "@/db/schema";
+import { product, orderItem, order } from "@/db/schema";
 import { eq, and, count, max } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
+import { triggerProductSegmentation } from "@/lib/segmentation/trigger-product";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -52,7 +53,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!id) return NextResponse.json({ error: "Missing product ID" }, { status: 400 });
 
   const [existing] = await db
-    .select({ id: product.id })
+    .select({
+      id:    product.id,
+      price: product.price,
+      cost:  product.cost,
+      stock: product.stock,
+    })
     .from(product)
     .where(and(eq(product.id, id), eq(product.businessId, ctx.businessId)));
 
@@ -67,58 +73,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { name, price, description, stock, cost, imagesUrl } = body;
 
-  // ── Validation ──────────────────────────────────────────────────────────────
-  if (name !== undefined) {
-    if (typeof name !== "string" || !name.trim()) {
-      return NextResponse.json({ error: "Product name cannot be empty" }, { status: 400 });
-    }
-    if ((name as string).trim().length > 255) {
-      return NextResponse.json({ error: "Product name must be 255 characters or fewer" }, { status: 400 });
-    }
-  }
-
-  if (price !== undefined) {
-    const priceNum = Number(price);
-    if (isNaN(priceNum)) {
-      return NextResponse.json({ error: "Invalid price value" }, { status: 400 });
-    }
-    if (priceNum < 0) {
-      return NextResponse.json({ error: "Price cannot be negative" }, { status: 400 });
-    }
-    if (priceNum > 999_999_999.99) {
-      return NextResponse.json({ error: "Price exceeds maximum allowed value" }, { status: 400 });
-    }
-  }
-
-  if (stock !== undefined && stock !== null && stock !== "") {
-    const stockNum = Number(stock);
-    if (isNaN(stockNum) || !Number.isInteger(stockNum)) {
-      return NextResponse.json({ error: "Stock must be a whole number" }, { status: 400 });
-    }
-    if (stockNum < 0) {
-      return NextResponse.json({ error: "Stock cannot be negative" }, { status: 400 });
-    }
-  }
-
-  if (cost !== undefined && cost !== null && cost !== "") {
-    const costNum = Number(cost);
-    if (isNaN(costNum)) {
-      return NextResponse.json({ error: "Cost must be a valid number" }, { status: 400 });
-    }
-    if (costNum < 0) {
-      return NextResponse.json({ error: "Cost cannot be negative" }, { status: 400 });
-    }
-  }
-
-  if (imagesUrl !== undefined && imagesUrl !== null && !Array.isArray(imagesUrl)) {
-    return NextResponse.json({ error: "imagesUrl must be an array of URLs" }, { status: 400 });
-  }
-
-  // ── Build patch (only provided fields) ─────────────────────────────────────
   const patch: Record<string, unknown> = {};
-  if (name        !== undefined) patch.name        = (name as string).trim();
+  if (name        !== undefined) patch.name        = String(name).trim();
   if (price       !== undefined) patch.price       = String(Number(price).toFixed(2));
-  if (description !== undefined) patch.description = description && typeof description === "string" ? description.trim() || null : null;
+  if (description !== undefined) patch.description = typeof description === "string"
+    ? description.trim() || null
+    : null;
   if (stock       !== undefined) patch.stock       = stock !== "" && stock !== null ? Number(stock) : 0;
   if (cost        !== undefined) patch.cost        = cost !== "" && cost !== null ? String(Number(cost).toFixed(2)) : null;
   if (imagesUrl   !== undefined) patch.imagesUrl   = imagesUrl;
@@ -127,11 +87,26 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
+  // Always bump updatedAt — this is the signal the segmentation trigger reads.
+  patch.updatedAt = new Date();
+
   const [updated] = await db
     .update(product)
     .set(patch)
     .where(and(eq(product.id, id), eq(product.businessId, ctx.businessId)))
     .returning();
+
+  // Only fire the trigger when a CLUSTER-AFFECTING field actually changed.
+  // The ML pipeline uses: price, cost, stock (via absolute_margin and stock_turnover).
+  // Skipping name/description/image edits saves a needless pipeline ping.
+  const clusterFieldsChanged =
+    (price       !== undefined && Number(price)  !== Number(existing.price)) ||
+    (cost        !== undefined && String(cost ?? "") !== String(existing.cost ?? "")) ||
+    (stock       !== undefined && Number(stock ?? 0) !== Number(existing.stock ?? 0));
+
+  if (clusterFieldsChanged) {
+    triggerProductSegmentation(ctx.businessId, "auto:threshold");
+  }
 
   return NextResponse.json(updated);
 }
@@ -187,6 +162,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   await db
     .delete(product)
     .where(and(eq(product.id, id), eq(product.businessId, ctx.businessId)));
+
+  // A delete removes a product from the catalog — definitely cluster-affecting.
+  triggerProductSegmentation(ctx.businessId, "auto:threshold");
 
   return NextResponse.json({ success: true, id, name: existing.name });
 }

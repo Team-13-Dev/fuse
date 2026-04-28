@@ -1,172 +1,209 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { InferSelectModel } from "drizzle-orm"
-import { product } from "@/db/schema"
-import { Package, Tag, DollarSign, Layers, FileText, Hash, ShoppingCart, Calendar } from "lucide-react"
+import {
+  Package, Tag, Layers, ShoppingCart, Calendar, Hash,
+  FileText, Edit, Trash2, X, TrendingUp, Sparkles,
+} from "lucide-react"
+import type { Product } from "./ProductDialog"
+import type { ProductSegment } from "@/lib/jobs/types"
 
-export type Product = InferSelectModel<typeof product> & {
-  unitsSold?:    number
-  lastSoldDate?: string | Date | null
+const CLUSTER_PALETTE = [
+  { bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" },
+  { bg: "#f0fdf4", text: "#15803d", dot: "#22c55e" },
+  { bg: "#fffbeb", text: "#b45309", dot: "#f59e0b" },
+  { bg: "#faf5ff", text: "#7e22ce", dot: "#a855f7" },
+  { bg: "#fff1f2", text: "#be123c", dot: "#f43f5e" },
+  { bg: "#ecfeff", text: "#0e7490", dot: "#06b6d4" },
+]
+
+function clusterStyle(cluster: number) {
+  return CLUSTER_PALETTE[cluster % CLUSTER_PALETTE.length]
 }
+
+interface Stats { unitsSold: number; lastSoldDate: string | null }
 
 type Props = {
   product:      Product | null
   open:         boolean
   onOpenChange: (open: boolean) => void
-  onEdit:       (product: Product) => void
-  onDelete:     (product: Product) => void
+  onEdit:       (p: Product) => void
+  onDelete:     (p: Product) => Promise<void>
   canWrite:     boolean
   canDelete:    boolean
+  segment?:     ProductSegment
 }
 
-function Field({
-  label,
-  value,
-  mono = false,
-  icon: Icon,
-}: {
-  label:  string
-  value:  string | number | null | undefined
-  mono?:  boolean
-  icon?:  React.ElementType
-}) {
-  const display = value !== null && value !== undefined && value !== "" ? value : "—"
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground flex items-center gap-1">
-        {Icon && <Icon size={11} />}
-        {label}
-      </span>
-      <span className={`text-sm text-foreground break-all ${mono ? "font-mono text-[11px]" : ""}`}>
-        {display}
-      </span>
-    </div>
-  )
-}
+export function ProductDetailDialog({ product, open, onOpenChange, onEdit, onDelete, canWrite, canDelete, segment }: Props) {
+  const [stats,        setStats]        = useState<Stats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(false)
+  const [deleting,     setDeleting]     = useState(false)
+  const [confirmDel,   setConfirmDel]   = useState(false)
 
-function getStockBadge(stock: number | null) {
-  const qty = stock ?? 0
-  if (qty === 0) return { label: "Out of stock", bg: "#FCEBEB", text: "#791F1F" }
-  if (qty <= 10) return { label: "Low stock",    bg: "#FEF3CD", text: "#664D03" }
-  return              { label: "In stock",       bg: "#E1F5EE", text: "#085041" }
-}
+  useEffect(() => {
+    if (!open || !product) { setStats(null); setConfirmDel(false); return }
+    setLoadingStats(true)
+    fetch(`/api/products/${product.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) setStats({ unitsSold: d.unitsSold ?? 0, lastSoldDate: d.lastSoldDate ?? null })
+      })
+      .finally(() => setLoadingStats(false))
+  }, [open, product])
 
-function getMargin(price: string, cost: string | null) {
-  const p = Number(price)
-  const c = Number(cost)
-  if (!cost || isNaN(c) || c === 0 || p === 0) return null
-  return `${(((p - c) / p) * 100).toFixed(1)}%`
-}
-
-export function ProductDetailDialog({
-  product,
-  open,
-  onOpenChange,
-  onEdit,
-  onDelete,
-  canWrite,
-  canDelete,
-}: Props) {
   if (!product) return null
 
-  const stockBadge  = getStockBadge(product.stock)
-  const margin      = getMargin(product.price, product.cost)
-  const unitsSold   = product.unitsSold ?? 0
-  const lastSold    = product.lastSoldDate
-    ? new Date(product.lastSoldDate).toLocaleDateString("en-EG", { year: "numeric", month: "short", day: "numeric" })
-    : null
+  const price    = Number(product.price)
+  const cost     = product.cost ? Number(product.cost) : null
+  const margin   = cost !== null ? ((price - cost) / price) * 100 : null
+  const lastSold = stats?.lastSoldDate
+    ? new Date(stats.lastSoldDate).toLocaleDateString("en-EG", { month: "short", day: "numeric", year: "numeric" })
+    : "—"
+
+  async function handleDelete() {
+    if (!confirmDel) { setConfirmDel(true); return }
+    setDeleting(true)
+    try { await onDelete(product!); onOpenChange(false) }
+    finally { setDeleting(false); setConfirmDel(false) }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Product details</DialogTitle>
+          <DialogTitle className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <Package size={14} className="text-indigo-600" />
+            </div>
+            Product Details
+          </DialogTitle>
         </DialogHeader>
 
-        {/* Identity block */}
-        <div className="flex items-start gap-3 py-2">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-            <Package size={22} className="text-indigo-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-foreground truncate">{product.name}</p>
-            <div className="flex items-center gap-2 flex-wrap mt-1">
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ background: stockBadge.bg, color: stockBadge.text }}
-              >
-                {stockBadge.label}
+        {/* Product name + ID */}
+        <div className="bg-gray-50 rounded-xl p-4 mb-4">
+          <h2 className="text-base font-bold text-gray-900 mb-0.5">{product.name}</h2>
+          {product.description && (
+            <p className="text-sm text-gray-500 leading-relaxed">{product.description}</p>
+          )}
+          <p className="text-[10px] text-gray-400 mt-2 font-mono">{product.id}</p>
+        </div>
+
+        {/* Segment chip */}
+        {segment && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2 p-3 rounded-xl border"
+              style={{ background: clusterStyle(segment.cluster).bg, borderColor: clusterStyle(segment.cluster).dot + "40" }}>
+              <Sparkles size={13} style={{ color: clusterStyle(segment.cluster).dot }} />
+              <span className="text-sm font-semibold" style={{ color: clusterStyle(segment.cluster).text }}>
+                {segment.clusterName}
               </span>
-              {margin && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-50 text-indigo-700">
-                  {margin} margin
-                </span>
-              )}
-              {unitsSold > 0 && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <ShoppingCart size={11} />
-                  {unitsSold} sold
-                </span>
-              )}
+              <span className="text-xs ml-auto" style={{ color: clusterStyle(segment.cluster).text }}>
+                AI Segment
+              </span>
             </div>
+          </div>
+        )}
+
+        {/* Pricing & margin */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="text-center bg-indigo-50 rounded-xl p-3">
+            <p className="text-xs text-indigo-600 font-medium mb-1">Price</p>
+            <p className="text-base font-bold text-indigo-900">
+              EGP {price.toLocaleString("en-EG", { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="text-center bg-gray-50 rounded-xl p-3">
+            <p className="text-xs text-gray-500 font-medium mb-1">Cost</p>
+            <p className="text-base font-bold text-gray-700">
+              {cost !== null ? `EGP ${cost.toLocaleString("en-EG", { minimumFractionDigits: 2 })}` : "—"}
+            </p>
+          </div>
+          <div className={`text-center rounded-xl p-3 ${
+            margin === null ? "bg-gray-50" :
+            margin >= 40 ? "bg-emerald-50" : margin >= 20 ? "bg-amber-50" : "bg-red-50"
+          }`}>
+            <p className={`text-xs font-medium mb-1 ${
+              margin === null ? "text-gray-400" :
+              margin >= 40 ? "text-emerald-600" : margin >= 20 ? "text-amber-600" : "text-red-600"
+            }`}>Margin</p>
+            <p className={`text-base font-bold ${
+              margin === null ? "text-gray-400" :
+              margin >= 40 ? "text-emerald-700" : margin >= 20 ? "text-amber-700" : "text-red-700"
+            }`}>
+              {margin !== null ? `${margin.toFixed(1)}%` : "—"}
+            </p>
           </div>
         </div>
 
-        {/* Fields */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
-          <Field
-            label="Price"
-            value={`EGP ${Number(product.price).toLocaleString("en-EG", { minimumFractionDigits: 2 })}`}
-            icon={DollarSign}
-          />
-          <Field
-            label="Cost"
-            value={product.cost ? `EGP ${Number(product.cost).toLocaleString("en-EG", { minimumFractionDigits: 2 })}` : null}
-            icon={Tag}
-          />
-          <Field label="Stock qty"      value={product.stock ?? 0}    icon={Layers}   />
-          <Field label="Units sold"     value={unitsSold}              icon={ShoppingCart} />
-          <Field label="Last sold"      value={lastSold}               icon={Calendar} />
-          <Field label="External ID"    value={product.externalAccId}  icon={Hash} mono />
-          <div className="col-span-2">
-            <Field label="Description"  value={product.description}    icon={FileText} />
+        {/* Stats row */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+            <Layers size={15} className="text-gray-400" />
+            <div>
+              <p className="text-xs text-gray-400">In stock</p>
+              <p className={`text-sm font-bold ${
+                (product.stock ?? 0) === 0 ? "text-red-600" :
+                (product.stock ?? 0) <= 10 ? "text-amber-600" : "text-gray-900"
+              }`}>{product.stock ?? 0} units</p>
+            </div>
           </div>
-          <div className="col-span-2">
-            <Field label="Product ID"   value={product.id}             icon={Hash} mono />
+          <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+            <ShoppingCart size={15} className="text-gray-400" />
+            <div>
+              <p className="text-xs text-gray-400">Units sold</p>
+              <p className="text-sm font-bold text-gray-900">
+                {loadingStats ? "…" : (stats?.unitsSold ?? 0).toLocaleString()}
+              </p>
+            </div>
           </div>
+          <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+            <Calendar size={15} className="text-gray-400" />
+            <div>
+              <p className="text-xs text-gray-400">Last sold</p>
+              <p className="text-sm font-bold text-gray-900">{loadingStats ? "…" : lastSold}</p>
+            </div>
+          </div>
+          {product.externalAccId && (
+            <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+              <Hash size={15} className="text-gray-400" />
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400">External ID</p>
+                <p className="text-sm font-mono text-gray-700 truncate">{product.externalAccId}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
-        <div className="flex justify-between gap-2 pt-2">
-          <div>
-            {canDelete && (
-              <button
-                onClick={() => { onOpenChange(false); onDelete(product) }}
-                className="px-4 py-2 text-sm font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition"
-              >
-                Delete
-              </button>
-            )}
-          </div>
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
+          {canDelete ? (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-xl transition
+                ${confirmDel
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "border border-red-200 text-red-600 hover:bg-red-50"}`}
+            >
+              <Trash2 size={13}/> {confirmDel ? "Confirm delete" : "Delete"}
+            </button>
+          ) : <div />}
           <div className="flex gap-2">
             <button
               onClick={() => onOpenChange(false)}
-              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition"
+              className="px-3.5 py-2 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
             >
               Close
             </button>
             {canWrite && (
               <button
                 onClick={() => { onOpenChange(false); onEdit(product) }}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition"
               >
-                Edit
+                <Edit size={13}/> Edit
               </button>
             )}
           </div>

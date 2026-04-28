@@ -1,405 +1,516 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState, useMemo } from "react"
 import Link from "next/link"
 import {
-  Users, Package, Tag, ShoppingCart, TrendingUp,
-  ArrowUpRight, ArrowDownRight, ChevronRight,
-  Zap, Activity, DollarSign, Star,
-  Clock, CheckCircle2, AlertCircle,
-  Upload
-  } from "lucide-react"
-import UploadDatasetModal from "@/app/components/dashboard/UploadDatasetModal"
-import { Button } from "@/components/ui/button"
+  ArrowUpRight, ArrowDownRight, TrendingUp, Users, Package, Tag,
+  ShoppingCart, BarChart3, Activity, Sparkles, Upload, Plus,
+  BotMessageSquare, ChevronRight, Layers,
+} from "lucide-react"
+import  UploadDatasetModal from "@/app/components/dashboard/UploadDatasetModal"
 
-// ─── Helper: Metric Icon Mapping ──────────────────────────────────────────────
-const ICON_MAP = {
-  revenue: DollarSign,
-  customers: Users,
-  products: Package,
-  orders: ShoppingCart,
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Metric = {
+  type:   "revenue" | "orders" | "customers" | "products"
+  label:  string
+  value:  string
+  change: string
+  up:     boolean
+  sub:    string
+  href?:  string
 }
 
-// ─── Loading Skeleton ────────────────────────────────────────────────────────
-function MetricSkeleton() {
+type OrderStatusBreakdown = { status: string; count: number; pct: number }
+
+type SegmentsResponse = {
+  hasResults:        boolean
+  productCount:      number
+  minProductsNeeded: number
+  lastJobAt:         string | null
+  segments:          { productId: string; cluster: number; clusterName: string }[]
+  clusters:          {
+    cluster:          number
+    clusterName:      string
+    numProducts:      number
+    avgMargin:        number | null
+    revenueSharePct:  number | null
+    profitSharePct:   number | null
+    totalRevenue:     number | null
+  }[]
+}
+
+// ─── Quick actions ────────────────────────────────────────────────────────────
+
+const QUICK_ACTIONS = [
+  { label: "New product",  href: "/dashboard/products?new=1", icon: Plus },
+  { label: "New order",    href: "/dashboard/orders?new=1",   icon: ShoppingCart },
+]
+
+// ─── Small reusable bits ──────────────────────────────────────────────────────
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="h-40 rounded-2xl bg-gray-100 animate-pulse border border-gray-200" />
-      ))}
+    <div className={`bg-white rounded-2xl border border-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${className}`}>
+      {children}
     </div>
   )
 }
-const RECENT_ORDERS = [
-  { id: "#ORD-9821", customer: "Sara Ali",       amount: "EGP 1,240", status: "completed", time: "2m ago" },
-  { id: "#ORD-9820", customer: "Mohamed Hassan", amount: "EGP 890",   status: "pending",   time: "14m ago" },
-  { id: "#ORD-9819", customer: "Layla Mahmoud",  amount: "EGP 3,450", status: "completed", time: "1h ago" },
-  { id: "#ORD-9818", customer: "Ahmed Karim",    amount: "EGP 560",   status: "failed",    time: "2h ago" },
-  { id: "#ORD-9817", customer: "Nour Ibrahim",   amount: "EGP 2,100", status: "completed", time: "3h ago" },
-]
 
-const TOP_PRODUCTS = [
-  { name: "Wireless Headphones Pro", sold: 284, revenue: "EGP 42,600", change: "+12%" },
-  { name: "Summer Linen Shirt",      sold: 231, revenue: "EGP 18,480", change: "+8%"  },
-  { name: "Leather Wallet Slim",     sold: 198, revenue: "EGP 13,860", change: "+21%" },
-  { name: "Arabic Coffee Set",       sold: 176, revenue: "EGP 35,200", change: "+5%"  },
-  { name: "Smart Watch Band",        sold: 154, revenue: "EGP 9,240",  change: "-3%"  },
-]
-
-const ACTIVITY = [
-  { icon: Users,    text: "New customer Sara Ali registered",        time: "2m ago",  color: "text-blue-500",   bg: "bg-blue-50"   },
-  { icon: Package,  text: "Product 'Wireless Headphones' restocked", time: "18m ago", color: "text-emerald-500", bg: "bg-emerald-50" },
-  { icon: Star,     text: "New 5-star review on Arabic Coffee Set",  time: "45m ago", color: "text-amber-500",  bg: "bg-amber-50"  },
-  { icon: Zap,      text: "Shopify integration synced 47 products",  time: "1h ago",  color: "text-violet-500", bg: "bg-violet-50" },
-  { icon: Users,    text: "Mohamed Hassan upgraded to VIP segment",  time: "2h ago",  color: "text-indigo-500", bg: "bg-indigo-50" },
-]
-
-const QUICK_ACTIONS = [
-  { label: "Add Product",   href: "/dashboard/products",   icon: Package,     color: "bg-indigo-600 hover:bg-indigo-700" },
-  { label: "Add Customer",  href: "/dashboard/customers",  icon: Users,       color: "bg-violet-600 hover:bg-violet-700" },
-  { label: "New Category",  href: "/dashboard/categories", icon: Tag,         color: "bg-blue-600 hover:bg-blue-700"    },
-]
-
-// ─── Sparkline (CSS-only fake chart) ─────────────────────────────────────────
 function Sparkline({ up }: { up: boolean }) {
-  const points = up
-    ? [30, 25, 35, 28, 38, 32, 42, 36, 48, 42, 55, 50]
-    : [55, 50, 48, 52, 44, 48, 40, 44, 36, 40, 32, 38]
-
-  const max = Math.max(...points)
-  const min = Math.min(...points)
-  const h = 32
-  const w = 80
-  const step = w / (points.length - 1)
-
-  const path = points
-    .map((p, i) => {
-      const x = i * step
-      const y = h - ((p - min) / (max - min)) * h
-      return `${i === 0 ? "M" : "L"} ${x} ${y}`
-    })
-    .join(" ")
-
+  // Tiny inline sparkline — purely decorative, scales with text color.
+  const path = up
+    ? "M2 14 L8 10 L14 12 L20 6 L26 8 L32 4"
+    : "M2 4 L8 8 L14 6 L20 12 L26 10 L32 14"
+  const stroke = up ? "#0ea5e9" : "#94a3b8"
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none">
-      <path d={path} stroke={up ? "#10b981" : "#ef4444"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="40" height="18" viewBox="0 0 34 18" fill="none">
+      <path d={path} stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
-    completed: { label: "Completed", icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-700" },
-    pending:   { label: "Pending",   icon: Clock,        cls: "bg-amber-50 text-amber-700"    },
-    failed:    { label: "Failed",    icon: AlertCircle,  cls: "bg-red-50 text-red-600"         },
-  }
-  const { label, icon: Icon, cls } = map[status] ?? map.pending
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>
-      <Icon size={10} />
-      {label}
-    </span>
+function MetricCard({ m }: { m: Metric }) {
+  const isAccent = m.type === "revenue"
+  const ICON_MAP = { revenue: TrendingUp, orders: ShoppingCart, customers: Users, products: Package }
+  const Icon = ICON_MAP[m.type]
+
+  const inner = (
+    <div className={`group rounded-2xl p-5 border h-full flex flex-col gap-4 transition-all hover:shadow-md ${
+      isAccent
+        ? "bg-linear-to-br from-sky-500 to-sky-600 border-sky-500 text-white"
+        : "bg-white border-slate-100 text-slate-900 hover:border-sky-200"
+    }`}>
+      <div className="flex items-center justify-between">
+        <div className={`p-2 rounded-xl ${isAccent ? "bg-white/15" : "bg-sky-50"}`}>
+          <Icon size={16} className={isAccent ? "text-white" : "text-sky-600"} />
+        </div>
+        <Sparkline up={m.up} />
+      </div>
+
+      <div>
+        <p className={`text-2xl font-bold ${isAccent ? "text-white" : "text-slate-900"}`}>{m.value}</p>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span className={`text-xs font-medium flex items-center gap-0.5 ${
+            m.up
+              ? isAccent ? "text-emerald-200" : "text-emerald-600"
+              : isAccent ? "text-rose-200"   : "text-rose-500"
+          }`}>
+            {m.up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+            {m.change}
+          </span>
+          <span className={`text-xs ${isAccent ? "text-sky-100" : "text-slate-400"}`}>{m.sub}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mt-auto">
+        <p className={`text-xs font-medium ${isAccent ? "text-sky-100" : "text-slate-500"}`}>{m.label}</p>
+        {m.href && !isAccent && (
+          <ArrowUpRight size={13} className="text-slate-300 group-hover:text-sky-500 transition-colors" />
+        )}
+      </div>
+    </div>
+  )
+
+  return m.href ? (
+    <Link href={m.href} className="block h-full">{inner}</Link>
+  ) : (
+    <div className="h-full">{inner}</div>
   )
 }
 
-// ─── Bar chart placeholder ─────────────────────────────────────────────────────
-function RevenueChart() {
-  const bars = [65, 80, 55, 90, 70, 85, 60, 95, 75, 88, 72, 100]
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
+function MetricSkeleton() {
   return (
-    <div className="flex items-end gap-1.5 h-28 w-full">
-      {bars.map((h, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
-          <div
-            className="w-full rounded-t-md bg-indigo-100 group-hover:bg-indigo-500 transition-all duration-300 relative overflow-hidden"
-            style={{ height: `${h}%` }}
-          >
-            <div className="absolute inset-0 bg-linear-to-t from-indigo-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-          <span className="text-[9px] text-gray-400">{months[i]}</span>
-        </div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-37 rounded-2xl bg-slate-100 animate-pulse" />
       ))}
     </div>
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Revenue chart (pure SVG, no external deps) ──────────────────────────────
+
+function RevenueChart({ points }: { points: { label: string; value: number }[] }) {
+  const W = 520, H = 180, P = 24
+  const max = Math.max(...points.map(p => p.value), 1)
+  const stepX = (W - P * 2) / Math.max(points.length - 1, 1)
+
+  const coords = points.map((p, i) => ({
+    x: P + i * stepX,
+    y: H - P - (p.value / max) * (H - P * 2),
+    ...p,
+  }))
+
+  const linePath = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x} ${c.y}`).join(" ")
+  const areaPath = `${linePath} L ${coords[coords.length - 1]?.x ?? P} ${H - P} L ${P} ${H - P} Z`
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-44">
+      <defs>
+        <linearGradient id="rev-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#0ea5e9" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* horizontal grid */}
+      {[0.25, 0.5, 0.75].map(t => (
+        <line key={t} x1={P} x2={W - P} y1={P + t * (H - P * 2)} y2={P + t * (H - P * 2)}
+          stroke="#f1f5f9" strokeWidth="1" />
+      ))}
+      <path d={areaPath} fill="url(#rev-grad)" />
+      <path d={linePath} fill="none" stroke="#0ea5e9" strokeWidth="2" strokeLinejoin="round" />
+      {coords.map((c) => (
+        <circle key={c.label} cx={c.x} cy={c.y} r="3" fill="#fff" stroke="#0ea5e9" strokeWidth="1.5" />
+      ))}
+      {coords.map((c, i) => (
+        <text key={i} x={c.x} y={H - 6} fontSize="10" textAnchor="middle" fill="#94a3b8">
+          {c.label}
+        </text>
+      ))}
+    </svg>
+  )
+}
+
+// ─── Order status donut ───────────────────────────────────────────────────────
+
+function StatusDonut({ data }: { data: OrderStatusBreakdown[] }) {
+  const colors: Record<string, string> = {
+    pending:   "#f59e0b",
+    confirmed: "#0ea5e9",
+    shipped:   "#6366f1",
+    delivered: "#10b981",
+    cancelled: "#ef4444",
+  }
+  const C = 2 * Math.PI * 38 // circumference
+  let offset = 0
+  return (
+    <div className="flex items-center gap-5">
+      <svg viewBox="0 0 100 100" className="w-28 h-28 -rotate-90">
+        <circle cx="50" cy="50" r="38" stroke="#f1f5f9" strokeWidth="14" fill="none" />
+        {data.map(d => {
+          const len = (d.pct / 100) * C
+          const circle = (
+            <circle
+              key={d.status}
+              cx="50" cy="50" r="38"
+              stroke={colors[d.status] ?? "#94a3b8"}
+              strokeWidth="14"
+              fill="none"
+              strokeDasharray={`${len} ${C}`}
+              strokeDashoffset={-offset}
+            />
+          )
+          offset += len
+          return circle
+        })}
+      </svg>
+      <div className="flex-1 space-y-1.5">
+        {data.map(d => (
+          <div key={d.status} className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full" style={{ background: colors[d.status] ?? "#94a3b8" }} />
+              <span className="text-slate-600 capitalize">{d.status}</span>
+            </div>
+            <span className="font-medium text-slate-700">{d.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-  const [greeting, setGreeting] = useState("Good morning")
+  const [metrics,    setMetrics]    = useState<Metric[]>([])
+  const [revenue,    setRevenue]    = useState<{ label: string; value: number }[]>([])
+  const [orderMix,   setOrderMix]   = useState<OrderStatusBreakdown[]>([])
+  const [recent,     setRecent]     = useState<{ orderNumber: string; customerName: string; total: number; status: string }[]>([])
+  const [segments,   setSegments]   = useState<SegmentsResponse | null>(null)
+  const [loading,    setLoading]    = useState(true)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [metrics, setMetrics] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
 
+  const greeting = useMemo(() => {
+    const h = new Date().getHours()
+    if (h < 12)  return "Good morning"
+    if (h < 18) return "Good afternoon"
+    return "Good evening"
+  }, [])
+
+  // Fetch metrics
   useEffect(() => {
-    const fetchMetrics = async () => {
+    async function load() {
       try {
-        setLoading(true)
-        const res = await fetch(`/api/metrics`)
-        const data = await res.json()
-
-        if (!data || data.error) throw new Error(data.error || "Failed to fetch")
-
-        // Transform the API Object { customers: 10, ... } into UI Array [...]
-        const formatted = [
-          {
-            type: "revenue",
-            label: "Total Revenue",
-            value: `EGP ${Number(data.revenue).toLocaleString()}`,
-            change: "+12.5%", // Static for now, requires historical DB comparison
-            up: true,
-            sub: "all time",
-          },
-          {
-            type: "customers",
-            label: "Customers",
-            value: data.customers.toLocaleString(),
-            change: "+3.2%",
-            up: true,
-            sub: "active records",
-            href: "/dashboard/customers",
-          },
-          {
-            type: "products",
-            label: "Products",
-            value: data.products.toLocaleString(),
-            change: "+2",
-            up: true,
-            sub: "in catalog",
-            href: "/dashboard/products",
-          },
-          {
-            type: "orders",
-            label: "Orders",
-            value: data.orders.toLocaleString(),
-            change: "-1.4%",
-            up: false,
-            sub: "processed",
-            href: "/dashboard/orders",
-          },
-        ]
-        setMetrics(formatted)
-      } catch (error) {
-        console.error("Metric Fetch Error:", error)
+        const res = await fetch("/api/metrics")
+        if (!res.ok) throw new Error()
+        const d = await res.json()
+        setMetrics(d.metrics ?? [])
+        setRevenue(d.revenue ?? [])
+        setOrderMix(d.orderMix ?? [])
+        setRecent(d.recent  ?? [])
+      } catch {
+        // Soft-fail: empty dashboard rather than crashing.
         setMetrics([])
       } finally {
         setLoading(false)
       }
     }
-
-    fetchMetrics()
+    load()
   }, [])
 
+  // Fetch segmentation (background — not blocking)
+  useEffect(() => {
+    fetch("/api/segments/product")
+      .then(r => r.ok ? r.json() : null)
+      .then(setSegments)
+      .catch(() => {})
+  }, [])
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="px-6 py-8 max-w-7xl mx-auto space-y-8">
 
-      {/* Page title + quick actions */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-gray-500">{greeting} 👋</p>
-          <h1 className="text-2xl font-bold text-gray-900 mt-0.5">Overview</h1>
+          <p className="text-sm text-slate-500">{greeting} 👋</p>
+          <h1 className="text-2xl font-bold text-slate-900 mt-0.5">Overview</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {QUICK_ACTIONS.map(a => (
-            <Button key={a.label} variant={"fuseMain"} asChild>
-              <Link
-                href={a.href}
-              >
-                <a.icon size={14} />
-                <span className="hidden sm:inline">{a.label}</span>
-              </Link>
-            </Button>
+            <Link
+              key={a.label}
+              href={a.href}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:text-sky-700 transition-colors"
+            >
+              <a.icon size={14} />
+              <span className="hidden sm:inline">{a.label}</span>
+            </Link>
           ))}
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-sky-500 rounded-xl hover:bg-sky-600 transition-colors shadow-sm"
+          >
+            <Upload size={14} />
+            Upload dataset
+          </button>
         </div>
       </div>
-      <button
-        onClick={() => setUploadOpen(true)}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-      >
-        <Upload className="w-4 h-4" />
-        Upload dataset
-      </button>
+
       <UploadDatasetModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
 
       {/* Metric cards */}
-      {loading ? (
-          <MetricSkeleton />
+      {loading ? <MetricSkeleton /> : (
+        metrics.length > 0 ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {metrics.map((m, i) => <MetricCard key={i} m={m} />)}
+          </div>
         ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {metrics.map((m, idx) => {
-            const Icon = ICON_MAP[m.type as keyof typeof ICON_MAP] || Activity
-            const isAccent = m.type === "revenue"
-
-            const cardContent = (
-              <div className={`rounded-2xl p-5 border flex flex-col gap-4 transition-all hover:shadow-md h-full
-                ${isAccent ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-100 text-gray-900"}`}>
-                
-                <div className="flex items-center justify-between">
-                  <div className={`p-2 rounded-xl ${isAccent ? "bg-indigo-500" : "bg-gray-50"}`}>
-                    <Icon size={16} className={isAccent ? "text-white" : "text-indigo-600"} />
-                  </div>
-                  <Sparkline up={m.up} />
-                </div>
-
-                <div>
-                  <p className={`text-2xl font-bold ${isAccent ? "text-white" : "text-gray-900"}`}>{m.value}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className={`text-xs font-medium flex items-center gap-0.5
-                      ${m.up
-                        ? isAccent ? "text-emerald-300" : "text-emerald-600"
-                        : isAccent ? "text-red-300" : "text-red-500"
-                      }`}>
-                      {m.up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-                      {m.change}
-                    </span>
-                    <span className={`text-xs ${isAccent ? "text-indigo-200" : "text-gray-400"}`}>{m.sub}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mt-auto">
-                  <p className={`text-xs font-medium ${isAccent ? "text-indigo-200" : "text-gray-500"}`}>{m.label}</p>
-                  {m.href && !isAccent && (
-                    <ArrowUpRight size={13} className="text-gray-300 group-hover:text-indigo-500" />
-                  )}
-                </div>
-              </div>
-            )
-
-            return m.href ? (
-              <Link key={idx} href={m.href} className="group block h-full">
-                {cardContent}
-              </Link>
-            ) : (
-              <div key={idx} className="h-full">
-                {cardContent}
-              </div>
-            )
-          })}
-        </div>
+          <Card className="p-8 text-center">
+            <p className="text-sm text-slate-500">
+              No data yet — upload a dataset to see your metrics.
+            </p>
+          </Card>
         )
-      }
+      )}
 
-      {/* Revenue chart + Activity */}
+      {/* Revenue chart + order mix */}
       <div className="grid lg:grid-cols-3 gap-6">
-
-        {/* Revenue chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
+        <Card className="lg:col-span-2 p-6">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Revenue Overview</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Monthly breakdown · 2025</p>
+              <h2 className="text-sm font-semibold text-slate-900">Revenue overview</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Last 6 months</p>
             </div>
-            <div className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-full">
+            <div className="inline-flex items-center gap-1 text-xs bg-sky-50 text-sky-700 font-medium px-2.5 py-1 rounded-full">
               <TrendingUp size={11} />
-              +18.2% YoY
+              Live
             </div>
           </div>
-          <RevenueChart />
-        </div>
+          {revenue.length > 0
+            ? <RevenueChart points={revenue} />
+            : <div className="h-44 grid place-content-center text-xs text-slate-400">No revenue data yet</div>}
+        </Card>
 
-        {/* Activity feed */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-sm font-semibold text-gray-900">Live Activity</h2>
-            <Activity size={14} className="text-gray-300 animate-pulse" />
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-900">Order status</h2>
+            <Activity size={14} className="text-slate-300" />
           </div>
-          <div className="space-y-3">
-            {ACTIVITY.map((a, i) => {
-              const Icon = a.icon
-              return (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className={`w-7 h-7 rounded-lg ${a.bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                    <Icon size={13} className={a.color} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 leading-relaxed">{a.text}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{a.time}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+          {orderMix.length > 0
+            ? <StatusDonut data={orderMix} />
+            : <p className="text-xs text-slate-400 py-12 text-center">No orders yet</p>}
+        </Card>
       </div>
 
-      {/* Recent orders + Top products */}
+      {/* ML Insights + Recent activity */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Product segmentation insights */}
+        <Card className="lg:col-span-2 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-sky-50">
+                <Sparkles size={14} className="text-sky-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Product segmentation</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {segments?.lastJobAt
+                    ? `Updated ${new Date(segments.lastJobAt).toLocaleDateString()}`
+                    : "AI-driven product clusters"}
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/segments"
+              className="text-xs font-medium text-sky-600 hover:text-sky-700 inline-flex items-center gap-1"
+            >
+              View all <ChevronRight size={12} />
+            </Link>
+          </div>
+
+          {!segments ? (
+            <div className="h-32 grid place-content-center text-xs text-slate-400">Loading insights…</div>
+          ) : !segments.hasResults ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+              <Layers size={20} className="text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-medium text-slate-700">
+                {segments.productCount < segments.minProductsNeeded
+                  ? `Add at least ${segments.minProductsNeeded} products to unlock`
+                  : "Segmentation will run on your next data update"}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                You currently have {segments.productCount} product{segments.productCount === 1 ? "" : "s"}.
+              </p>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {segments.clusters.slice(0, 4).map(c => (
+                <div key={c.cluster} className="rounded-xl border border-slate-100 p-3 hover:border-sky-200 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-slate-900 truncate">{c.clusterName}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded">
+                      {c.numProducts}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <p className="text-slate-400">Avg margin</p>
+                      <p className="font-medium text-slate-700">
+                        {c.avgMargin != null ? `${c.avgMargin.toFixed(1)}%` : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Revenue share</p>
+                      <p className="font-medium text-slate-700">
+                        {c.revenueSharePct != null ? `${c.revenueSharePct.toFixed(1)}%` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Recent activity */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-900">Recent orders</h2>
+            <Link href="/dashboard/orders" className="text-xs text-sky-600 hover:text-sky-700">All</Link>
+          </div>
+          <div className="space-y-3">
+            {recent.length === 0 ? (
+              <p className="text-xs text-slate-400 py-8 text-center">No recent orders</p>
+            ) : recent.slice(0, 5).map((o, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-800 truncate">{o.customerName ?? "Customer"}</p>
+                  <p className="text-slate-400 truncate">{o.orderNumber ?? `#${i + 1}`}</p>
+                </div>
+                <div className="text-right shrink-0 ml-2">
+                  <p className="font-medium text-slate-800">EGP {Number(o.total).toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-400 capitalize">{o.status}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* AI tools row: chatbot + customer segmentation soon */}
       <div className="grid lg:grid-cols-2 gap-6">
 
-        {/* Recent orders */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">Recent Orders</h2>
-            <Link href="/dashboard/orders" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-              View all <ChevronRight size={12} />
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {RECENT_ORDERS.map((o, i) => (
-              <div key={i} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 transition-colors">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800">{o.customer}</p>
-                  <p className="text-xs text-gray-400 font-mono">{o.id}</p>
+        {/* Chatbot */}
+        <Link href="/chatbot" className="block">
+          <Card className="p-6 hover:border-sky-200 transition-colors h-full">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-linear-to-br from-sky-50 to-sky-100">
+                <BotMessageSquare size={20} className="text-sky-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">AI Assistant</h3>
+                  <ArrowUpRight size={14} className="text-slate-300" />
                 </div>
-                <StatusBadge status={o.status} />
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold text-gray-900 tabular-nums">{o.amount}</p>
-                  <p className="text-[10px] text-gray-400">{o.time}</p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Ask questions about your data — sales trends, top products, customer behavior. Get instant answers.
+                </p>
+                <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-sky-700 bg-sky-50 px-2 py-1 rounded-md">
+                  <Sparkles size={11} />
+                  Powered by your data
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          </Card>
+        </Link>
 
-        {/* Top products */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">Top Products</h2>
-            <Link href="/dashboard/products" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-              View all <ChevronRight size={12} />
-            </Link>
+        {/* Customer Segmentation — Soon */}
+        <Card className="p-6 relative overflow-hidden">
+          <div className="absolute top-3 right-3">
+            <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+              Soon
+            </span>
           </div>
-          <div className="divide-y divide-gray-50">
-            {TOP_PRODUCTS.map((p, i) => (
-              <div key={i} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 transition-colors">
-                <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{p.name}</p>
-                  <p className="text-xs text-gray-400">{p.sold} sold</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold text-gray-900 tabular-nums">{p.revenue}</p>
-                  <p className={`text-xs font-medium ${p.change.startsWith("+") ? "text-emerald-600" : "text-red-500"}`}>
-                    {p.change}
-                  </p>
-                </div>
+          <div className="flex items-start gap-4 opacity-70">
+            <div className="p-3 rounded-xl bg-slate-100">
+              <Users size={20} className="text-slate-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-slate-700">Customer segmentation</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Auto-cluster your customers by behavior — VIPs, at-risk, new, dormant. Personalized campaigns coming soon.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-500">
+                <BarChart3 size={11} />
+                In development
               </div>
-            ))}
+            </div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* CRM quick links */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: "Customers",  href: "/dashboard/customers",  icon: Users,   desc: "Manage your customer base", color: "from-blue-500 to-indigo-600"    },
-          { label: "Products",   href: "/dashboard/products",   icon: Package, desc: "Catalog, pricing & stock",  color: "from-indigo-500 to-violet-600"  },
-          { label: "Categories", href: "/dashboard/categories", icon: Tag,     desc: "Organise your catalog",     color: "from-violet-500 to-purple-600"  },
+          { label: "Customers",  href: "/dashboard/customers",  icon: Users,   desc: "Manage your customer base" },
+          { label: "Products",   href: "/dashboard/products",   icon: Package, desc: "Catalog, pricing & stock" },
+          { label: "Categories", href: "/dashboard/categories", icon: Tag,     desc: "Organise your catalog" },
         ].map(c => {
           const Icon = c.icon
           return (
-            <Link key={c.label} href={c.href}
-              className="group bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all hover:border-indigo-100">
-              <div className={`w-10 h-10 rounded-xl bg-linear-to-br ${c.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
-                <Icon size={18} className="text-white" />
-              </div>
-              <p className="text-sm font-semibold text-gray-900">{c.label}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{c.desc}</p>
-              <div className="flex items-center gap-1 mt-3 text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                Go to {c.label} <ArrowUpRight size={11} />
-              </div>
+            <Link key={c.label} href={c.href} className="group">
+              <Card className="p-5 hover:border-sky-200 transition-colors h-full">
+                <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center mb-3 group-hover:bg-sky-100 transition-colors">
+                  <Icon size={18} className="text-sky-600" />
+                </div>
+                <p className="text-sm font-semibold text-slate-900">{c.label}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{c.desc}</p>
+                <div className="flex items-center gap-1 mt-3 text-xs text-sky-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Go to {c.label} <ArrowUpRight size={11} />
+                </div>
+              </Card>
             </Link>
           )
         })}

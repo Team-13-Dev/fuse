@@ -140,6 +140,8 @@ export const product = pgTable("product", {
   cost:          decimal("cost", { precision: 10, scale: 2 }),
   lastReprice:   timestamp("last_reprice"),
   prediction:    jsonb("prediction"),
+  createdAt:     timestamp("created_at").notNull().defaultNow(),
+  updatedAt:     timestamp("updated_at").notNull().defaultNow(),
 });
 
 // Many-to-many: product ↔ category

@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Package, Users, Tag, Sparkles, Globe,
   ShoppingCart, BarChart3, Megaphone, Ticket, Settings,
   Zap, ChevronsLeft, ChevronsRight,
+  BarChart2,
 } from "lucide-react"
 import {
   SidebarStorePanel,
@@ -28,6 +29,7 @@ export const NAV_SECTIONS = [
     label: "Catalog",
     items: [
       { label: "Products",     href: "/dashboard/products",     icon: Package                     },
+      { label: "Segments",   href: "/dashboard/segments",   icon: BarChart2                       },
       { label: "Categories",   href: "/dashboard/categories",   icon: Tag                         },
     ],
   },

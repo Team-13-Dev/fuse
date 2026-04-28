@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { product } from "@/db/schema";
 import { eq, ilike, and, or, lte, gt, desc, count } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
+import { triggerProductSegmentation } from "@/lib/segmentation/trigger-product";
 
 // ─── GET /api/products ──────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -60,6 +61,10 @@ export async function GET(req: NextRequest) {
 /**
  * POST /api/products
  * Roles: owner, manager
+ *
+ * Side effect: fires `triggerProductSegmentation(businessId, "auto:threshold")`
+ * fire-and-forget. The pipeline checks thresholds and only re-runs the model
+ * if enough has changed since the last run.
  */
 export async function POST(req: NextRequest) {
   const ctx = await getBusinessContext(req);
@@ -102,29 +107,21 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Stock ───────────────────────────────────────────────────────────────────
-  const rawStock = stock !== undefined && stock !== "" && stock !== null ? Number(stock) : 0;
-  if (isNaN(rawStock) || !Number.isInteger(rawStock)) {
-    return NextResponse.json({ error: "Stock must be a whole number" }, { status: 400 });
-  }
-  if (rawStock < 0) {
-    return NextResponse.json({ error: "Stock cannot be negative" }, { status: 400 });
+  const rawStock = stock !== undefined && stock !== "" && stock !== null
+    ? Number(stock)
+    : 0;
+  if (isNaN(rawStock) || !Number.isInteger(rawStock) || rawStock < 0) {
+    return NextResponse.json({ error: "Stock must be a non-negative whole number" }, { status: 400 });
   }
 
   // ── Cost ────────────────────────────────────────────────────────────────────
-  let costNum: number | null = null;
-  if (cost !== undefined && cost !== "" && cost !== null) {
-    costNum = Number(cost);
-    if (isNaN(costNum)) {
-      return NextResponse.json({ error: "Cost must be a valid number" }, { status: 400 });
+  let costStr: string | null = null;
+  if (cost !== undefined && cost !== null && cost !== "") {
+    const costNum = Number(cost);
+    if (isNaN(costNum) || costNum < 0) {
+      return NextResponse.json({ error: "Cost must be non-negative" }, { status: 400 });
     }
-    if (costNum < 0) {
-      return NextResponse.json({ error: "Cost cannot be negative" }, { status: 400 });
-    }
-  }
-
-  // ── imagesUrl ───────────────────────────────────────────────────────────────
-  if (imagesUrl !== undefined && imagesUrl !== null && !Array.isArray(imagesUrl)) {
-    return NextResponse.json({ error: "imagesUrl must be an array of URLs" }, { status: 400 });
+    costStr = costNum.toFixed(2);
   }
 
   const [created] = await db
@@ -132,13 +129,17 @@ export async function POST(req: NextRequest) {
     .values({
       businessId:  ctx.businessId,
       name:        (name as string).trim(),
-      price:       String(priceNum.toFixed(2)),
-      description: description && typeof description === "string" ? description.trim() || null : null,
+      price:       priceNum.toFixed(2),
+      description: typeof description === "string" ? description.trim() || null : null,
       stock:       rawStock,
-      cost:        costNum !== null ? String(costNum.toFixed(2)) : null,
-      imagesUrl:   (imagesUrl as string[] | null) ?? null,
+      cost:        costStr,
+      imagesUrl:   Array.isArray(imagesUrl) ? imagesUrl : null,
+      // createdAt / updatedAt default to NOW() via Drizzle defaultNow()
     })
     .returning();
+
+  // Fire-and-forget — never blocks the response.
+  triggerProductSegmentation(ctx.businessId, "auto:threshold");
 
   return NextResponse.json(created, { status: 201 });
 }
