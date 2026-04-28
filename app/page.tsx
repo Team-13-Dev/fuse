@@ -13,10 +13,10 @@ export default function FuseLandingPage() {
       </div>
 
       {/* Glassmorphic Navigation */}
-      <nav className="fixed top-0 w-full z-50 border-b border-zinc-200/60 bg-white/60 backdrop-blur-xl supports-[backdrop-filter]:bg-white/40">
+      <nav className="fixed top-0 w-full z-50 border-b border-zinc-200/60 bg-white/60 backdrop-blur-xl supports-backdrop-filter:bg-white/40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
               <Image src={logo} alt="logo"/>
             </div>
             <span className="text-xl font-semibold tracking-tight text-zinc-900">Fuse</span>
@@ -44,7 +44,7 @@ export default function FuseLandingPage() {
             <Sparkles className="w-3 h-3 text-indigo-500" />
             <span>Fuse AI 2.0 is now available</span>
           </div>
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tighter mb-8 text-transparent bg-clip-text bg-gradient-to-b from-zinc-900 to-zinc-800">
+          <h1 className="text-5xl sm:text-7xl font-bold tracking-tighter mb-8 text-transparent bg-clip-text bg-linear-to-b from-zinc-900 to-zinc-800">
             Customer intelligence, <br />
             beautifully automated.
           </h1>
@@ -65,9 +65,9 @@ export default function FuseLandingPage() {
       {/* App Preview Mockup (Layered Architecture) */}
       <div className="relative z-10 max-w-6xl mx-auto px-6 pb-32">
         <div className="rounded-2xl border border-zinc-200/80 bg-white/40 backdrop-blur-2xl p-2 shadow-2xl shadow-zinc-200/50 overflow-hidden">
-          <div className="rounded-xl border border-zinc-200/50 bg-white aspect-[16/9] flex items-center justify-center relative overflow-hidden shadow-inner">
+          <div className="rounded-xl border border-zinc-200/50 bg-white aspect-video flex items-center justify-center relative overflow-hidden shadow-inner">
             {/* Abstract UI representation */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-violet-50/50" />
+            <div className="absolute inset-0 bg-linear-to-br from-indigo-50/50 to-violet-50/50" />
             <div className="w-full h-full flex flex-col">
               <div className="h-12 border-b border-zinc-100 flex items-center px-4 gap-2 bg-white/80 backdrop-blur-sm">
                 <div className="w-3 h-3 rounded-full bg-zinc-200" />

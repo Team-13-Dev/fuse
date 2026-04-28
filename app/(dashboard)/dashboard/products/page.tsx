@@ -3,14 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Plus, Search, Package, TrendingUp, AlertTriangle,
-  DollarSign, RefreshCw, X, ChevronDown, Tag,
+  DollarSign, RefreshCw, X, ChevronDown, Sparkles,
 } from "lucide-react"
-import { InferSelectModel } from "drizzle-orm"
-import { product } from "@/db/schema"
 import { ProductDialog, ProductFormData } from "@/app/components/crm/products/ProductDialog"
 import { ProductDetailDialog, Product } from "@/app/components/crm/products/ProductDetailDialog"
 import { DeleteProductDialog } from "@/app/components/crm/products/DeleteProductDialog"
 import { Category } from "@/app/components/crm/categories/CategoryDialog"
+import { SegmentsResponse } from "@/lib/jobs/types"
 
 // type RawProduct = InferSelectModel<typeof product>
 
@@ -73,8 +72,9 @@ function StockBadge({ stock }: { stock: number | null }) {
   return              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700">{qty} in stock</span>
 }
 
-function ProductRow({ product, categoryNames, onClick }: {
+function ProductRow({ product, categoryNames, onClick, clusterByProduct }: {
   product: Product; categoryNames: string[]; onClick: () => void
+  clusterByProduct?: Map<string, { name: string; cluster: number }>
 }) {
   const margin =
     product.cost && Number(product.cost) > 0
@@ -102,6 +102,23 @@ function ProductRow({ product, categoryNames, onClick }: {
                 )}
               </div>
             )}
+            {(() => {
+              const seg = clusterByProduct?.get(product.id)
+              if (!seg) return null
+              const palette = ["#3344FC", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899", "#84cc16", "#f97316", "#6366f1"]
+              const color = palette[seg.cluster % palette.length]
+              return (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "2px 8px", borderRadius: 999,
+                  background: `${color}18`, color,
+                  fontSize: 11, fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}>
+                  <Sparkles size={10}/> {seg.name}
+                </span>
+              )
+            })()}
           </div>
         </div>
       </td>
@@ -151,6 +168,9 @@ export default function ProductsPage() {
     hasNext: boolean
     hasPrev: boolean
   } | null>(null);
+
+  const [segments, setSegments]             = useState<SegmentsResponse | null>(null)
+  const [refreshing, setRefreshing]         = useState(false)
 
   const searchRef = useRef<HTMLInputElement>(null)
   const { toasts, push, dismiss } = useToast()
@@ -247,6 +267,24 @@ export default function ProductsPage() {
     await loadProductCategories(p.id)
     setDetailProduct(p)
   }
+
+  
+  // ── Fetch Segments ──────────────────────────────────────────────────────────
+  useEffect(() => {
+  fetch("/api/segments/product")
+    .then(r => r.ok ? r.json() : null)
+    .then(setSegments)
+    .catch(() => {})
+  }, [])
+
+  // Build a quick lookup map: productId → clusterName
+  const clusterByProduct = new Map<string, { name: string; cluster: number }>()
+  if (segments) {
+    for (const s of segments.segments) {
+      clusterByProduct.set(s.productId, { name: s.clusterName, cluster: s.cluster })
+    }
+  }
+
 
   // ── Metrics ─────────────────────────────────────────────────────────────────
   const total = pagination?.total ?? 0;
@@ -387,6 +425,45 @@ export default function ProductsPage() {
         <MetricCard label="Out of stock"    value={outOfStock}     icon={AlertTriangle} sub={outOfStock > 0 ? "Needs restocking" : "All stocked"} />
       </div>
 
+      {segments && segments.productCount >= segments.minProductsNeeded && (
+        <button
+          onClick={async () => {
+            setRefreshing(true)
+            try {
+              const res = await fetch("/api/segments/refresh", { method: "POST" })
+              const data = await res.json()
+              if (!res.ok) {
+                alert(data.error ?? "Refresh failed")
+              }
+            } finally {
+              setRefreshing(false)
+            }
+          }}
+          disabled={refreshing}
+          style={{
+            padding: "8px 14px", borderRadius: 8, border: "1px solid #c7d2fe",
+            background: "#eef2ff", color: "#3730a3",
+            fontSize: 12, fontWeight: 600, cursor: refreshing ? "wait" : "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Sparkles size={13}/> {refreshing ? "Refreshing…" : "Refresh insights"}
+        </button>
+      )}
+
+      {segments && segments.productCount < segments.minProductsNeeded && (
+        <div style={{
+          background: "#fef3c7", border: "1px solid #fde68a",
+          borderRadius: 10, padding: "10px 14px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 10,
+          fontSize: 13, color: "#92400e",
+        }}>
+          <Sparkles size={15}/>
+          Add at least {segments.minProductsNeeded} products to unlock automated segmentation insights.
+          You currently have {segments.productCount}.
+        </div>
+      )}
+
       {/* Table card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Toolbar */}
@@ -477,6 +554,7 @@ export default function ProductsPage() {
                     product={p}
                     categoryNames={getCatNames(p.id)}
                     onClick={() => handleOpenDetail(p)}
+                    clusterByProduct={clusterByProduct}
                   />
                 ))}
               </tbody>

@@ -1,6 +1,8 @@
 import {
   pgTable,
   text,
+  primaryKey,
+  numeric,
   timestamp,
   boolean,
   integer,
@@ -77,6 +79,7 @@ export const business = pgTable("business", {
   tenantSlug: varchar("tenant_slug", { length: 100 }).notNull().unique(),
   industry:   varchar("industry", { length: 100 }),
   location:   text("location"),
+  lastProductSegmentAt: timestamp("last_product_segment_at"),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -271,3 +274,57 @@ export const orderItemRelations = relations(orderItem, ({ one }) => ({
   order:   one(order,   { fields: [orderItem.orderId],   references: [order.id]   }),
   product: one(product, { fields: [orderItem.productId], references: [product.id] }),
 }));
+
+// ── Generic job tracker (product segmentation, future ML jobs) ──────────────
+export const analysisJob = pgTable("analysis_job", {
+  id:           uuid("id").defaultRandom().primaryKey(),
+  businessId:   uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
+  type:         text("type").notNull(),            // 'product_segmentation' | future types
+  status:       text("status").notNull(),          // 'queued' | 'running' | 'done' | 'failed' | 'skipped'
+  progress:     integer("progress").notNull().default(0),
+  detail:       text("detail"),
+  error:        text("error"),
+  resultMeta:   jsonb("result_meta"),
+  triggeredBy:  text("triggered_by").notNull(),    // 'auto:clean' | 'auto:threshold' | 'manual'
+  startedAt:    timestamp("started_at"),
+  finishedAt:   timestamp("finished_at"),
+  createdAt:    timestamp("created_at").notNull().defaultNow(),
+})
+ 
+ 
+// ── Per-product cluster assignments ─────────────────────────────────────────
+export const productSegment = pgTable("product_segment", {
+  businessId:   uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
+  productId:    uuid("product_id").notNull().references(() => product.id, { onDelete: "cascade" }),
+  cluster:      integer("cluster").notNull(),
+  clusterName:  text("cluster_name").notNull(),
+  jobId:        uuid("job_id").notNull().references(() => analysisJob.id, { onDelete: "cascade" }),
+  updatedAt:    timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.businessId, t.productId] }),
+}))
+ 
+ 
+// ── Cluster-level rollup stats ──────────────────────────────────────────────
+export const productClusterSummary = pgTable("product_cluster_summary", {
+  id:               uuid("id").defaultRandom().primaryKey(),
+  businessId:       uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
+  jobId:            uuid("job_id").notNull().references(() => analysisJob.id, { onDelete: "cascade" }),
+  cluster:          integer("cluster").notNull(),
+  clusterName:      text("cluster_name").notNull(),
+  numProducts:      integer("num_products").notNull(),
+  avgProfit:        numeric("avg_profit"),
+  totalProfit:      numeric("total_profit"),
+  avgRevenue:       numeric("avg_revenue"),
+  totalRevenue:     numeric("total_revenue"),
+  avgPrice:         numeric("avg_price"),
+  avgCost:          numeric("avg_cost"),
+  avgMargin:        numeric("avg_margin"),
+  avgStock:         numeric("avg_stock"),
+  avgQuantity:      numeric("avg_quantity"),
+  revenueSharePct:  numeric("revenue_share_pct"),
+  profitSharePct:   numeric("profit_share_pct"),
+  topProducts:      jsonb("top_products"),
+  bottomProducts:   jsonb("bottom_products"),
+  createdAt:        timestamp("created_at").notNull().defaultNow(),
+})
