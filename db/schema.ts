@@ -11,6 +11,7 @@ import {
   varchar,
   jsonb,
   type AnyPgColumn,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -188,6 +189,30 @@ export const orderItem = pgTable("order_item", {
   // Variant attributes at time of sale: { size, color, ... }
   attributes:   jsonb("attributes"),
 });
+
+//WEBSITE BUILDER
+export const blockTypeEnum = pgEnum("block_type", [
+  "header", "hero", "products", "contact", "footer", "testimonials"
+]);
+
+export const pages = pgTable("pages", {
+  id:         uuid("id").primaryKey().defaultRandom(),
+  businessId: uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
+  name:       text("name").notNull(),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+  updatedAt:  timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const pageBlocks = pgTable("page_blocks", {
+  id:            uuid("id").primaryKey().defaultRandom(),
+  pageId:        uuid("page_id").notNull().references(() => pages.id, { onDelete: "cascade" }),
+  type:          blockTypeEnum("type").notNull(),
+  position:      integer("position").notNull(),
+  accentColor:   text("accent_color"),
+  bgColor:       text("bg_color"),
+  textOverrides: jsonb("text_overrides").$type<Record<string, string>>(),
+});
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DRIZZLE RELATIONS
