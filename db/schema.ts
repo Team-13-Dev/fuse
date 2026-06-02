@@ -199,6 +199,7 @@ export const pages = pgTable("pages", {
   id:         uuid("id").primaryKey().defaultRandom(),
   businessId: uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
   name:       text("name").notNull(),
+  isLanding:  boolean("isLanding").default(false),
   createdAt:  timestamp("created_at").defaultNow().notNull(),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });

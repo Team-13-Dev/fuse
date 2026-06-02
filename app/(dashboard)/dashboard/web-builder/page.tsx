@@ -20,7 +20,8 @@ type BlockType =
   | "products"
   | "contact"
   | "footer"
-  | "testimonials";
+  | "testimonials"
+  | "productList";
 
 type BlockTextMap = typeof DEFAULT_TEXT;
 
@@ -54,13 +55,15 @@ const BLOCK_DEFS : {
   label: string;
   icon: any;
   description: string;
+  category: string[]
 }[] = [
-  { type: "header",       label: "Header",       icon: Menu,          description: "Navigation bar" },
-  { type: "hero",         label: "Hero",          icon: Square,        description: "Full-width banner" },
-  { type: "products",     label: "Products",      icon: LayoutGrid,    description: "Product grid" },
-  { type: "contact",      label: "Contact",       icon: List,          description: "Contact form" },
-  { type: "footer",       label: "Footer",        icon: AlignJustify,  description: "Page footer" },
-  { type: "testimonials", label: "Testimonials",  icon: MessageSquare, description: "Customer reviews" },
+  { type: "header",       label: "Header",       icon: Menu,          description: "Navigation bar", category: ["landing", "products", "cart"]},
+  { type: "hero",         label: "Hero",          icon: Square,        description: "Full-width banner",  category: ["landing"]},
+  { type: "products",     label: "Products",      icon: LayoutGrid,    description: "Product grid", category: ["landing", "products", "cart"]},
+  { type: "contact",      label: "Contact",       icon: List,          description: "Contact form" , category: ["landing"]},
+  { type: "footer",       label: "Footer",        icon: AlignJustify,  description: "Page footer", category: ["landing", "products", "cart"]},
+  { type: "testimonials", label: "Testimonials",  icon: MessageSquare, description: "Customer reviews", category: ["landing"]},
+  { type: "productList", label: "Product List", icon: List, description: "Product List", category: ["landing", "products", "cart"]}
 ];
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -341,8 +344,10 @@ export default function WebsiteBuilder() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [loading, setLoading]       = useState(!!pageId);
   const [activeType, setActiveType] = useState<BlockType | null>(null);
+  const [activeCat, setActiveCat] = useState<string>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverPreviewType, setHoverPreviewType] = useState<BlockType | null>(null);
+  const [isLanding, setIsLanding] = useState<boolean>(false);
 
   const selectedBlock = blocks.find(b => b.instanceId === selectedId) || null;
 
@@ -371,7 +376,6 @@ export default function WebsiteBuilder() {
         const res = await fetch(`/api/pages/${pageId}`, { cache: "no-store" });
         if (!res.ok) throw new Error();
         const data = await res.json();
-        console.log(data);
         if (cancelled) return;
         setPageName(data.name);
         setBlocks(data.blocks?.length ? blocksFromApi(data.blocks) : []);
@@ -389,7 +393,7 @@ export default function WebsiteBuilder() {
   const handleSave = useCallback(async () => {
     setSaveStatus("saving");
     try {
-      const payload = { name: pageName, blocks: blocksToApi(blocks) };
+      const payload = { name: pageName, blocks: blocksToApi(blocks), isLanding };
 
       if (pageId) {
         // Update existing
@@ -482,8 +486,9 @@ export default function WebsiteBuilder() {
             {/* Components */}
             <div style={{ padding:"12px 10px", display:"flex", flexDirection:"column", gap:5 }}>
               <p style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"#94a3b8", padding:"0 4px", marginBottom:6 }}>Components</p>
-              <SegmentedSwitch options={["Landing", "Products", "Cart"]}/>
-              {BLOCK_DEFS.map(def => (
+              <SegmentedSwitch options={["Landing", "Products", "Cart"]} onChange={(val : any) => setActiveCat(val)}/>
+              {BLOCK_DEFS.map((def) => (
+                def.category.includes(activeCat?.toLowerCase() || "") &&
                 <SidebarBlock
                   key={def.type}
                   def={def}

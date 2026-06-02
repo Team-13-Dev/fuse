@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import {
   FileText, Loader2, Plus, Pencil, Trash2,
   AlertTriangle, Check, X, Clock, RefreshCw,
+  ArrowUpRight,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 type PageRow = {
   id: string;
@@ -275,6 +277,16 @@ export default function PagesList({ onNewPage }: { onNewPage: () => void }) {
                 >
                   <Trash2 size={10} />
                 </button>
+                <Link href={`/${page.id}`}>
+                  <button 
+                    title="Open Page"  
+                    style={{ display: "flex", padding: 4, background: "none", border: "none", borderRadius: 4, cursor: "pointer", color: "#94a3b8" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#fef2f2"; (e.currentTarget as HTMLElement).style.color = "#ef4444"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                  >
+                    <ArrowUpRight size={10}/>
+                  </button>
+                </Link>
               </div>
             )}
           </div>

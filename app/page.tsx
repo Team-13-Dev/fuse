@@ -1,9 +1,13 @@
-import React from 'react';
+"use client"
+
 import { Sparkles, BarChart3, Users, Zap, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
 import logo from "@/public/logo.png"
-
+import Link from 'next/link';
+import { authClient } from '@/lib/auth-client';
 export default function FuseLandingPage() {
+
+  const { data: session } = authClient.useSession();
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans selection:bg-indigo-500/20">
       {/* Soft Background Glow Effects */}
@@ -26,14 +30,17 @@ export default function FuseLandingPage() {
             <a href="#solutions" className="hover:text-zinc-900 transition-colors">Solutions</a>
             <a href="#pricing" className="hover:text-zinc-900 transition-colors">Pricing</a>
           </div>
-          <div className="flex items-center gap-4">
-            <button className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">Log in</button>
-            <a href="/register">
-              <button className="h-9 px-4 rounded-full bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors shadow-sm">
-                Get Started
-              </button>
-            </a>
-          </div>
+          {
+            !session &&
+            <div className="flex items-center gap-4">
+              <Link href="/login" className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">Log in</Link>
+              <Link href="/register">
+                <button className="h-9 px-4 rounded-full bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors shadow-sm cursor-pointer hover:opacity-90 duration-200">
+                  Get Started
+                </button>
+              </Link>
+            </div>
+          }
         </div>
       </nav>
 
@@ -51,14 +58,25 @@ export default function FuseLandingPage() {
           <p className="max-w-2xl mx-auto text-lg sm:text-xl text-zinc-500 mb-10 leading-relaxed">
             Fuse merges advanced predictive AI with enterprise-grade CRM capabilities. Anticipate needs, automate workflows, and close deals faster with a system that thinks alongside you.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="w-full sm:w-auto h-12 px-8 rounded-full bg-zinc-900 text-white text-base font-semibold hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 shadow-md shadow-zinc-900/10">
-              Start Free Trial <ChevronRight className="w-4 h-4" />
-            </button>
-            <button className="w-full sm:w-auto h-12 px-8 rounded-full bg-white text-zinc-900 border border-zinc-200 shadow-sm text-base font-medium hover:bg-zinc-50 transition-colors flex items-center justify-center">
-              Book a Demo
-            </button>
-          </div>
+          {
+            !session ?
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button className="w-full sm:w-auto h-12 px-8 rounded-full bg-zinc-900 text-white text-base font-semibold hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 shadow-md shadow-zinc-900/10">
+                Start Now <ChevronRight className="w-4 h-4" />
+              </button>
+              <button className="w-full sm:w-auto h-12 px-8 rounded-full bg-white text-zinc-900 border border-zinc-200 shadow-sm text-base font-medium hover:bg-zinc-50 transition-colors flex items-center justify-center">
+                Already Have An Account
+              </button>
+            </div>
+            :
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link href={"/dashboard"}>
+                <button className="w-full sm:w-auto h-12 px-8 rounded-full bg-white text-zinc-900 border border-zinc-200 shadow-sm text-base font-medium hover:bg-zinc-50 transition-colors flex items-center justify-center cursor-pointer hover:opacity-80 duration-200">
+                  Go To Dashboard <ChevronRight />
+                </button>
+              </Link>
+            </div>
+          }
         </div>
       </main>
 

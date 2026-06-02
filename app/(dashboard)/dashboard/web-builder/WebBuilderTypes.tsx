@@ -15,7 +15,8 @@ export type BlockType =
   | "products"
   | "contact"
   | "footer"
-  | "testimonials";
+  | "testimonials"
+  | "productList";
 
 
 export type BlockInstance = {
