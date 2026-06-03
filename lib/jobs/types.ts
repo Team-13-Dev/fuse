@@ -42,8 +42,8 @@ export interface ProductClusterSummary {
   avgQuantity:      number | null
   revenueSharePct:  number | null
   profitSharePct:   number | null
-  topProducts:      Array<{ product_id: string; name: string | null; profit: number; revenue: number }>
-  bottomProducts:   Array<{ product_id: string; name: string | null; profit_margin: number }>
+  topProducts:      Array<{ product_id: string; name: string | null; price: number | null; profit: number }>
+  bottomProducts:   Array<{ product_id: string; name: string | null; price: number | null; profit_margin: number }>
 }
 
 export interface SegmentsResponse {

@@ -14,10 +14,11 @@ import { getBusinessContext } from "@/lib/get-business-context"
 // The pipeline stores top/bottom products keyed only by UUID. Resolve names so
 // the UI can show something readable instead of a truncated id.
 type RankedProduct = {
-  product_id:     string
-  profit?:        number
-  revenue?:       number
-  profit_margin?: number
+  product_id:      string
+  product_name?:   string | null
+  price?:          number
+  profit?:         number
+  profit_margin?:  number
 }
 
 const MIN_PRODUCTS_NEEDED = 15

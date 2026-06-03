@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
   Sparkles, Layers, TrendingUp, Package,
   Users, ChevronDown, ChevronRight, AlertTriangle, Lock,
@@ -8,6 +8,8 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/useToast"
 import { useBusinessRole } from "@/hooks/useBusinessRole"
+import { ProductDetailDialog } from "@/app/components/crm/products/ProductDetailDialog"
+import type { Product } from "@/app/components/crm/products/ProductDialog"
 import type { SegmentsResponse, ProductClusterSummary } from "@/lib/jobs/types"
 
 // ─── Cluster palette ─────────────────────────────────────────────────────────
@@ -130,7 +132,7 @@ function DistributionBar({ clusters, total }: { clusters: ProductClusterSummary[
 
 // ─── Cluster card ────────────────────────────────────────────────────────────
 
-function ClusterCard({ cluster, total }: { cluster: ProductClusterSummary; total: number }) {
+function ClusterCard({ cluster, total, onProductClick }: { cluster: ProductClusterSummary; total: number; onProductClick: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false)
   const c = colorFor(cluster.cluster)
   const sharePct = (cluster.numProducts / Math.max(total, 1)) * 100
@@ -214,9 +216,12 @@ function ClusterCard({ cluster, total }: { cluster: ProductClusterSummary; total
                 <ProductList
                   title="Top performers"
                   icon={<Crown size={12} className="text-amber-500" />}
+                  valueLabel="Price"
+                  onItemClick={onProductClick}
                   items={cluster.topProducts.slice(0, 4).map(p => ({
+                    id:    p.product_id,
                     name:  p.name ?? `${p.product_id.slice(0, 8)}…`,
-                    value: fmtMoney(p.profit ?? 0),
+                    value: p.price != null ? fmtMoney(p.price) : "—",
                     tone:  "emerald" as const,
                   }))}
                 />
@@ -225,9 +230,12 @@ function ClusterCard({ cluster, total }: { cluster: ProductClusterSummary; total
                 <ProductList
                   title="Underperformers"
                   icon={<ArrowDownRight size={12} className="text-rose-500" />}
+                  valueLabel="Price"
+                  onItemClick={onProductClick}
                   items={cluster.bottomProducts.slice(0, 4).map(p => ({
+                    id:    p.product_id,
                     name:  p.name ?? `${p.product_id.slice(0, 8)}…`,
-                    value: fmtMarginPct(p.profit_margin),
+                    value: p.price != null ? fmtMoney(p.price) : "—",
                     tone:  "rose" as const,
                   }))}
                 />
@@ -272,24 +280,34 @@ function ShareBar({ label, pct, barClass }: { label: string; pct: number; barCla
 }
 
 function ProductList({
-  title, icon, items,
+  title, icon, valueLabel, items, onItemClick,
 }: {
   title: string
   icon: React.ReactNode
-  items: { name: string; value: string; tone: "emerald" | "rose" }[]
+  valueLabel: string
+  onItemClick?: (id: string) => void
+  items: { id: string; name: string; value: string; tone: "emerald" | "rose" }[]
 }) {
   return (
     <div>
-      <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-        {icon} {title}
-      </h4>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          {icon} {title}
+        </h4>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{valueLabel}</span>
+      </div>
       <ul className="space-y-1">
-        {items.map((p, i) => (
-          <li key={i} className="flex items-center justify-between gap-2 text-xs py-1 border-b border-slate-50 last:border-0">
-            <span className="text-slate-700 truncate">{p.name}</span>
-            <span className={`font-semibold shrink-0 ${p.tone === "emerald" ? "text-emerald-600" : "text-rose-600"}`}>
-              {p.value}
-            </span>
+        {items.map((p) => (
+          <li key={p.id}>
+            <button
+              onClick={() => onItemClick?.(p.id)}
+              className="w-full flex items-center justify-between gap-2 text-xs py-1 border-b border-slate-50 last:border-0 hover:bg-slate-50 rounded px-1 -mx-1 transition-colors text-left group cursor-pointer"
+            >
+              <span className="text-slate-700 truncate group-hover:text-slate-900">{p.name}</span>
+              <span className={`font-semibold shrink-0 ${p.tone === "emerald" ? "text-emerald-600" : "text-rose-600"}`}>
+                {p.value}
+              </span>
+            </button>
           </li>
         ))}
       </ul>
@@ -314,11 +332,21 @@ export default function SegmentsPage() {
   const role     = useBusinessRole()
   const canWrite = role === "owner" || role === "manager"
 
-  const [tab,        setTab]        = useState<Tab>("products")
-  const [segments,   setSegments]   = useState<SegmentsResponse | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  const [tab,             setTab]             = useState<Tab>("products")
+  const [segments,        setSegments]        = useState<SegmentsResponse | null>(null)
+  const [loading,         setLoading]         = useState(true)
+  const [refreshing,      setRefreshing]      = useState(false)
+  const [detailProduct,   setDetailProduct]   = useState<Product | null>(null)
+  const [detailOpen,      setDetailOpen]      = useState(false)
   const { toasts, push } = useToast()
+
+  const openProduct = useCallback(async (productId: string) => {
+    const res = await fetch(`/api/products/${productId}`)
+    if (!res.ok) return
+    const data = await res.json()
+    setDetailProduct(data)
+    setDetailOpen(true)
+  }, [])
 
   useEffect(() => {
     fetch("/api/segments/product")
@@ -413,10 +441,21 @@ export default function SegmentsPage() {
 
       {/* Content */}
       {tab === "products" ? (
-        <ProductsTabContent segments={segments} loading={loading} />
+        <ProductsTabContent segments={segments} loading={loading} onProductClick={openProduct} />
       ) : (
         <CustomersSoonState />
       )}
+
+      <ProductDetailDialog
+        product={detailProduct}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onEdit={() => setDetailOpen(false)}
+        onDelete={async () => { setDetailOpen(false) }}
+        canWrite={false}
+        canDelete={false}
+        segment={segments?.segments.find(s => s.productId === detailProduct?.id)}
+      />
     </div>
   )
 }
@@ -452,7 +491,7 @@ function TabButton({
 
 // ─── Products tab ────────────────────────────────────────────────────────────
 
-function ProductsTabContent({ segments, loading }: { segments: SegmentsResponse | null; loading: boolean }) {
+function ProductsTabContent({ segments, loading, onProductClick }: { segments: SegmentsResponse | null; loading: boolean; onProductClick: (id: string) => void }) {
   if (loading) return <SegmentsSkeleton />
 
   if (!segments) {
@@ -531,7 +570,7 @@ function ProductsTabContent({ segments, loading }: { segments: SegmentsResponse 
         {segments.clusters
           .slice()
           .sort((a, b) => b.numProducts - a.numProducts)
-          .map(c => <ClusterCard key={c.cluster} cluster={c} total={totalProducts} />)}
+          .map(c => <ClusterCard key={c.cluster} cluster={c} total={totalProducts} onProductClick={onProductClick} />)}
       </div>
 
       {/* Methodology */}
