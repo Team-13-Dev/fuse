@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { order, orderItem, customer, product, } from "@/db/schema";
-import { eq, and, ilike, desc, count } from "drizzle-orm";
+import { eq, and, ilike, desc, count, getTableColumns } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 
 // ─── GET /api/orders ──────────────────────────────────────────────
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
 
-  const { customerName, customerEmail, customerId, items, address, orderVoucher, orderDiscount } = body;
+  const { customerId, items, address, orderVoucher, orderDiscount } = body;
 
   if (!customerId || typeof customerId !== "string") {
     return NextResponse.json({ error: "customerId is required" }, { status: 400 });
@@ -130,8 +130,6 @@ export async function POST(req: NextRequest) {
 
   // Insert order (decimal fields as strings)
   const [createdOrder] = await db.insert(order).values({
-    customerName,
-    customerEmail,
     customerId,
     businessId: ctx.businessId,
     total: String(total), 
@@ -141,6 +139,17 @@ export async function POST(req: NextRequest) {
     address: address || null,
   }).returning();
 
+  //Fetch the order joined with the customer details
+  const orderWithCustomer = await db.select({
+    ...getTableColumns(order),
+    customerName: customer.fullName,
+    customerEmail: customer.email,
+  })
+  .from(order)
+  .leftJoin(customer, eq(order.customerId, customer.id))
+  .where(eq(order.id, createdOrder.id))
+  .then(res => res[0]); 
+
   for (const oi of orderItemsData) {
     await db.insert(orderItem).values({
       ...oi,
@@ -148,6 +157,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json(createdOrder, { status: 201 });
+  return NextResponse.json(orderWithCustomer, { status: 201 });
 }
 

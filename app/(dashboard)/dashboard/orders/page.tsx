@@ -277,6 +277,7 @@ const metrics = isOrdersArray
       throw new Error(err.error ?? "Failed to create order")
     }
     const created: Order = await res.json()
+    console.log(created);
     setOrders(prev => [created, ...prev])
     push(`Order ${created.orderNumber} created`, "success")
     setAddOpen(false)
