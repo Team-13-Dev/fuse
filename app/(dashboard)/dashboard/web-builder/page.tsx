@@ -1,4 +1,5 @@
 "use client"
+import { Suspense } from "react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { DndContext, useDraggable, useDroppable, DragOverlay, pointerWithin } from "@dnd-kit/core";
@@ -334,7 +335,15 @@ function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => vo
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function WebsiteBuilder() {
+export default function WebsiteBuilderPage() {
+  return (
+    <Suspense>
+      <WebsiteBuilder />
+    </Suspense>
+  );
+}
+
+function WebsiteBuilder() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const pageId       = searchParams.get("pageId");  // null = new page (unsaved)
