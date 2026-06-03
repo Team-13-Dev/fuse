@@ -7,6 +7,7 @@ const DEFAULT_TEXT: Record<BlockType, any> = {
   contact: { sectionLabel:"Get in Touch", fieldName:"Name", fieldEmail:"Email", fieldMessage:"Message", cta:"Send Message" },
   footer: { brand:"YourBrand", link1:"Privacy", link2:"Terms", link3:"Contact", copy:"© 2026 All rights reserved" },
   testimonials: { sectionLabel:"What People Say", t1Name:"Sarah K.", t1Role:"Designer", t1Text:"Absolutely transformed how our team ships landing pages.", t2Name:"Marco R.", t2Role:"Developer", t2Text:"Incredibly fast workflow — days now take minutes." },
+  productList: { sectionLabel:"Our Products", emptyState:"No products yet." },
 };
 
 export type BlockType =
