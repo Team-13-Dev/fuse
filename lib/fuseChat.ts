@@ -7,8 +7,11 @@
  */
 
 import OpenAI from "openai";
-import { Collection } from "chromadb";
 import type { YearlyStats } from "./fuseData"; // re-export type from fuseData if needed
+
+interface Collection {
+  query(params: { queryTexts: string[]; nResults: number }): Promise<{ documents: (string | null)[][] }>;
+}
 
 // Re-export the interface so callers can import it from here
 export interface ChatMessage {
