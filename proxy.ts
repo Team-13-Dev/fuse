@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const PROTECTED_ROUTES = ["/dashboard", "/settings", "/profile", "/business"];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
