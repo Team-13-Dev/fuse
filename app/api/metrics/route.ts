@@ -126,6 +126,37 @@ export async function GET(req: NextRequest) {
       status:       r.status,
     }))
 
+    // ── Inventory health (out-of-stock / low-stock) ───────────────────────
+    const [[{ outOfStock }], [{ lowStock }]] = await Promise.all([
+      db.select({ outOfStock: sql<number>`count(*)::int` })
+        .from(product).where(and(eq(product.businessId, bid), eq(product.stock, 0))),
+      db.select({ lowStock: sql<number>`count(*)::int` })
+        .from(product).where(and(
+          eq(product.businessId, bid),
+          gte(product.stock, 1),
+          lt(product.stock, 11),
+        )),
+    ])
+
+    // ── Top products by realized revenue ──────────────────────────────────
+    const topRows = await db.execute(sql`
+      SELECT p.id, p.name,
+             coalesce(sum(${orderItem.unitPrice} * ${orderItem.quantity}), 0)::float AS revenue,
+             coalesce(sum(${orderItem.quantity}), 0)::int                            AS units
+      FROM ${orderItem}
+      JOIN "order" o ON o.id = ${orderItem.orderId} AND o.business_id = ${bid}
+      JOIN ${product} p ON p.id = ${orderItem.productId}
+      GROUP BY p.id, p.name
+      ORDER BY revenue DESC
+      LIMIT 5
+    `)
+    const topProducts = (topRows.rows ?? topRows).map((r: any) => ({
+      id:      r.id,
+      name:    r.name,
+      revenue: Number(r.revenue),
+      units:   Number(r.units),
+    }))
+
     // ── Build metric cards with deltas ────────────────────────────────────
     function pctDelta(curr: number, prev: number) {
       if (!prev) return curr > 0 ? { up: true, change: "New" } : { up: true, change: "0%" }
@@ -174,17 +205,28 @@ export async function GET(req: NextRequest) {
       },
     ]
 
+    const totalOrdersN = Number(totalOrders)
+    const avgOrderValue = totalOrdersN > 0 ? Number(revenueAllTime) / totalOrdersN : 0
+
     return NextResponse.json({
       metrics,
       revenue,
       orderMix,
       recent,
+      topProducts,
+      inventory: { outOfStock: Number(outOfStock), lowStock: Number(lowStock) },
+      allTimeRevenue: Number(revenueAllTime),
+      avgOrderValue,
       _allTimeRevenue: Number(revenueAllTime),
     })
   } catch (err) {
     console.error("[dashboard/metrics] error:", err)
     return NextResponse.json(
-      { error: "Failed to load metrics", metrics: [], revenue: [], orderMix: [], recent: [] },
+      {
+        error: "Failed to load metrics",
+        metrics: [], revenue: [], orderMix: [], recent: [], topProducts: [],
+        inventory: { outOfStock: 0, lowStock: 0 }, allTimeRevenue: 0, avgOrderValue: 0,
+      },
       { status: 500 },
     )
   }

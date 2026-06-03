@@ -2,140 +2,237 @@
 
 import { useEffect, useState } from "react"
 import {
-  Sparkles, RefreshCw, Layers, TrendingUp, Package,
+  Sparkles, Layers, TrendingUp, Package,
   Users, ChevronDown, ChevronRight, AlertTriangle, Lock,
-  ArrowUpRight, ArrowDownRight, Crown,
+  ArrowDownRight, Crown, Boxes, Banknote, Gauge,
 } from "lucide-react"
 import { useToast } from "@/hooks/useToast"
 import { useBusinessRole } from "@/hooks/useBusinessRole"
 import type { SegmentsResponse, ProductClusterSummary } from "@/lib/jobs/types"
 
-// ─── Cluster palette (matches products page) ────────────────────────────────
+// ─── Cluster palette ─────────────────────────────────────────────────────────
 
 const CLUSTER_COLORS = [
-  { bg: "bg-sky-500",     soft: "bg-sky-50",     text: "text-sky-700",     ring: "ring-sky-200"     },
-  { bg: "bg-violet-500",  soft: "bg-violet-50",  text: "text-violet-700",  ring: "ring-violet-200"  },
-  { bg: "bg-emerald-500", soft: "bg-emerald-50", text: "text-emerald-700", ring: "ring-emerald-200" },
-  { bg: "bg-amber-500",   soft: "bg-amber-50",   text: "text-amber-700",   ring: "ring-amber-200"   },
-  { bg: "bg-rose-500",    soft: "bg-rose-50",    text: "text-rose-700",    ring: "ring-rose-200"    },
-  { bg: "bg-indigo-500",  soft: "bg-indigo-50",  text: "text-indigo-700",  ring: "ring-indigo-200"  },
-  { bg: "bg-teal-500",    soft: "bg-teal-50",    text: "text-teal-700",    ring: "ring-teal-200"    },
-  { bg: "bg-fuchsia-500", soft: "bg-fuchsia-50", text: "text-fuchsia-700", ring: "ring-fuchsia-200" },
+  { dot: "bg-sky-500",     soft: "bg-sky-50",     text: "text-sky-700",     bar: "bg-sky-400",     hex: "#0ea5e9" },
+  { dot: "bg-violet-500",  soft: "bg-violet-50",  text: "text-violet-700",  bar: "bg-violet-400",  hex: "#8b5cf6" },
+  { dot: "bg-emerald-500", soft: "bg-emerald-50", text: "text-emerald-700", bar: "bg-emerald-400", hex: "#10b981" },
+  { dot: "bg-amber-500",   soft: "bg-amber-50",   text: "text-amber-700",   bar: "bg-amber-400",   hex: "#f59e0b" },
+  { dot: "bg-rose-500",    soft: "bg-rose-50",    text: "text-rose-700",    bar: "bg-rose-400",    hex: "#f43f5e" },
+  { dot: "bg-indigo-500",  soft: "bg-indigo-50",  text: "text-indigo-700",  bar: "bg-indigo-400",  hex: "#6366f1" },
+  { dot: "bg-teal-500",    soft: "bg-teal-50",    text: "text-teal-700",    bar: "bg-teal-400",    hex: "#14b8a6" },
+  { dot: "bg-fuchsia-500", soft: "bg-fuchsia-50", text: "text-fuchsia-700", bar: "bg-fuchsia-400", hex: "#d946ef" },
 ]
 
 const colorFor = (cluster: number) => CLUSTER_COLORS[cluster % CLUSTER_COLORS.length]
 
+// ─── Formatting ──────────────────────────────────────────────────────────────
+
+function fmtMoney(v: number | null | undefined): string {
+  if (v == null || isNaN(Number(v))) return "—"
+  const n = Number(v)
+  const sign = n < 0 ? "-" : ""
+  const a = Math.abs(n)
+  if (a >= 1_000_000) return `${sign}EGP ${(a / 1_000_000).toFixed(2)}M`
+  if (a >= 1_000)     return `${sign}EGP ${(a / 1_000).toFixed(1)}K`
+  return `${sign}EGP ${a.toLocaleString("en-EG", { maximumFractionDigits: 0 })}`
+}
+
+// avg_margin / profit_margin come from the pipeline as fractions (0.07 = 7%).
+function fmtMarginPct(frac: number | null | undefined): string {
+  if (frac == null || isNaN(Number(frac))) return "—"
+  return `${(Number(frac) * 100).toFixed(1)}%`
+}
+
+// revenue_share_pct / profit_share_pct are already percentages (15.06 = 15%).
+function fmtSharePct(pct: number | null | undefined): string {
+  if (pct == null || isNaN(Number(pct))) return "—"
+  return `${Number(pct).toFixed(1)}%`
+}
+
+// ─── Trait badges (derived, human-readable descriptions) ─────────────────────
+
+type Tone = "emerald" | "sky" | "amber" | "rose" | "violet" | "indigo"
+
+const TONE: Record<Tone, string> = {
+  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  sky:     "bg-sky-50 text-sky-700 border-sky-200",
+  amber:   "bg-amber-50 text-amber-700 border-amber-200",
+  rose:    "bg-rose-50 text-rose-700 border-rose-200",
+  violet:  "bg-violet-50 text-violet-700 border-violet-200",
+  indigo:  "bg-indigo-50 text-indigo-700 border-indigo-200",
+}
+
+function clusterTraits(c: ProductClusterSummary): { label: string; tone: Tone }[] {
+  const out: { label: string; tone: Tone }[] = []
+
+  const m = c.avgMargin
+  if (m != null) {
+    if (m >= 0.3)      out.push({ label: "High margin",  tone: "emerald" })
+    else if (m >= 0.1) out.push({ label: "Healthy margin", tone: "sky" })
+    else if (m >= 0)   out.push({ label: "Thin margin",  tone: "amber" })
+    else               out.push({ label: "Loss-making",  tone: "rose" })
+  }
+
+  if (c.avgStock != null && c.avgQuantity != null) {
+    const turnover = c.avgStock > 0 ? c.avgQuantity / c.avgStock : Infinity
+    if (turnover >= 50)                          out.push({ label: "Fast moving", tone: "violet" })
+    else if (c.avgStock >= 50 && turnover < 10)  out.push({ label: "Overstocked", tone: "amber" })
+  }
+
+  if (c.revenueSharePct != null && c.revenueSharePct >= 40)
+    out.push({ label: "Revenue driver", tone: "indigo" })
+
+  return out
+}
+
+// ─── Catalog distribution bar ────────────────────────────────────────────────
+
+function DistributionBar({ clusters, total }: { clusters: ProductClusterSummary[]; total: number }) {
+  const ordered = clusters.slice().sort((a, b) => b.numProducts - a.numProducts)
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-slate-800">Catalog distribution</h3>
+        <span className="text-xs text-slate-400">{total} products · {clusters.length} clusters</span>
+      </div>
+
+      {/* Stacked bar */}
+      <div className="flex h-3 rounded-full overflow-hidden bg-slate-100">
+        {ordered.map(c => {
+          const pct = (c.numProducts / Math.max(total, 1)) * 100
+          return (
+            <div
+              key={c.cluster}
+              className={`${colorFor(c.cluster).dot} h-full first:rounded-l-full last:rounded-r-full transition-all`}
+              style={{ width: `${pct}%` }}
+              title={`${c.clusterName}: ${c.numProducts} (${pct.toFixed(1)}%)`}
+            />
+          )
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4">
+        {ordered.map(c => {
+          const pct = (c.numProducts / Math.max(total, 1)) * 100
+          return (
+            <div key={c.cluster} className="flex items-center gap-2 min-w-0">
+              <span className={`w-2.5 h-2.5 rounded-sm ${colorFor(c.cluster).dot} shrink-0`} />
+              <span className="text-xs text-slate-600 truncate">{c.clusterName}</span>
+              <span className="text-xs font-medium text-slate-400">{pct.toFixed(0)}%</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Cluster card ────────────────────────────────────────────────────────────
 
-function ClusterCard({
-  cluster, total,
-}: {
-  cluster: ProductClusterSummary
-  total:   number
-}) {
+function ClusterCard({ cluster, total }: { cluster: ProductClusterSummary; total: number }) {
   const [expanded, setExpanded] = useState(false)
   const c = colorFor(cluster.cluster)
-
   const sharePct = (cluster.numProducts / Math.max(total, 1)) * 100
+  const traits = clusterTraits(cluster)
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-100 overflow-hidden transition-all ${expanded ? "shadow-md" : "hover:shadow-sm"}`}>
-
-      {/* Header */}
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full text-left p-5 flex items-start gap-4"
-      >
-        {/* Color dot */}
-        <div className={`w-10 h-10 rounded-xl ${c.bg} grid place-content-center shrink-0`}>
-          <Layers size={18} className="text-white" />
+    <div className={`bg-white rounded-2xl border overflow-hidden transition-all ${
+      expanded ? "border-slate-200 shadow-md" : "border-slate-100 hover:border-slate-200 hover:shadow-sm"
+    }`}>
+      {/* Header (click to expand) */}
+      <button onClick={() => setExpanded(v => !v)} className="w-full text-left p-5 flex gap-4">
+        {/* Accent rail + icon */}
+        <div className="flex flex-col items-center gap-2 shrink-0">
+          <div className={`w-11 h-11 rounded-xl ${c.dot} grid place-content-center`}>
+            <Layers size={18} className="text-white" />
+          </div>
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <h3 className="text-base font-semibold text-slate-900 truncate">{cluster.clusterName}</h3>
-            <ChevronDown size={16}
-              className={`text-slate-400 transition-transform shrink-0 ${expanded ? "rotate-180" : ""}`} />
+          {/* Title row */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold text-slate-900 truncate">{cluster.clusterName}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {cluster.numProducts} products · {sharePct.toFixed(1)}% of catalog
+              </p>
+            </div>
+            <ChevronDown size={16} className={`text-slate-400 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </div>
 
-          {/* Quick stats row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Products" value={cluster.numProducts.toString()} sub={`${sharePct.toFixed(1)}% of catalog`} />
-            <Stat
-              label="Avg margin"
-              value={cluster.avgMargin != null ? `${cluster.avgMargin.toFixed(1)}%` : "—"}
-            />
-            <Stat
-              label="Revenue share"
-              value={cluster.revenueSharePct != null ? `${cluster.revenueSharePct.toFixed(1)}%` : "—"}
-            />
-            <Stat
-              label="Profit share"
-              value={cluster.profitSharePct != null ? `${cluster.profitSharePct.toFixed(1)}%` : "—"}
-            />
+          {/* Trait badges */}
+          {traits.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              {traits.map(t => (
+                <span key={t.label} className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${TONE[t.tone]}`}>
+                  {t.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Headline metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <Metric icon={Boxes}   label="Avg margin"    value={fmtMarginPct(cluster.avgMargin)}
+              tone={cluster.avgMargin != null && cluster.avgMargin < 0 ? "rose" : "slate"} />
+            <Metric icon={Banknote} label="Revenue share" value={fmtSharePct(cluster.revenueSharePct)} />
+            <Metric icon={TrendingUp} label="Profit share" value={fmtSharePct(cluster.profitSharePct)} />
+            <Metric icon={Gauge}   label="Avg price"     value={fmtMoney(cluster.avgPrice)} />
           </div>
 
-          {/* Mini share bar */}
-          <div className="mt-3 h-1 rounded-full bg-slate-100 overflow-hidden">
-            <div className={`h-full ${c.bg} transition-all`} style={{ width: `${Math.min(sharePct, 100)}%` }} />
+          {/* Share bars */}
+          <div className="mt-4 space-y-2">
+            <ShareBar label="Catalog" pct={sharePct}                  barClass={c.bar} />
+            <ShareBar label="Revenue" pct={cluster.revenueSharePct ?? 0} barClass={c.bar} />
+            <ShareBar label="Profit"  pct={cluster.profitSharePct ?? 0}  barClass={c.bar} />
           </div>
         </div>
       </button>
 
       {/* Expanded details */}
       {expanded && (
-        <div className="px-5 pb-5 pt-0 border-t border-slate-50 mt-1">
+        <div className="px-5 pb-5 border-t border-slate-50">
           <div className="grid sm:grid-cols-2 gap-6 pt-5">
-
-            {/* Numeric details */}
+            {/* Numbers */}
             <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Cluster details</h4>
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Cluster economics</h4>
               <dl className="space-y-2 text-sm">
                 <Row label="Avg price"     value={fmtMoney(cluster.avgPrice)} />
                 <Row label="Avg cost"      value={fmtMoney(cluster.avgCost)} />
-                <Row label="Avg stock"     value={cluster.avgStock != null ? cluster.avgStock.toFixed(0) : "—"} />
-                <Row label="Avg quantity"  value={cluster.avgQuantity != null ? cluster.avgQuantity.toFixed(0) : "—"} />
+                <Row label="Avg margin"    value={fmtMarginPct(cluster.avgMargin)} />
+                <Row label="Avg stock"     value={cluster.avgStock != null ? Math.round(cluster.avgStock).toLocaleString() : "—"} />
+                <Row label="Avg units sold" value={cluster.avgQuantity != null ? Math.round(cluster.avgQuantity).toLocaleString() : "—"} />
                 <Row label="Total revenue" value={fmtMoney(cluster.totalRevenue)} />
                 <Row label="Total profit"  value={fmtMoney(cluster.totalProfit)} />
               </dl>
             </div>
 
-            {/* Top / bottom products */}
-            <div className="space-y-4">
-              {cluster.topProducts && cluster.topProducts.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-                    <Crown size={11} className="text-amber-500" /> Top performers
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {cluster.topProducts.slice(0, 3).map((p, i) => (
-                      <li key={i} className="flex items-center justify-between text-xs">
-                        <span className="text-slate-700 truncate">{String(p.product_id).slice(0, 8)}…</span>
-                        <span className="text-emerald-600 font-medium ml-2">{fmtMoney(p.profit ?? 0)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+            {/* Products */}
+            <div className="space-y-5">
+              {cluster.topProducts?.length > 0 && (
+                <ProductList
+                  title="Top performers"
+                  icon={<Crown size={12} className="text-amber-500" />}
+                  items={cluster.topProducts.slice(0, 4).map(p => ({
+                    name:  p.name ?? `${p.product_id.slice(0, 8)}…`,
+                    value: fmtMoney(p.profit ?? 0),
+                    tone:  "emerald" as const,
+                  }))}
+                />
               )}
-              {cluster.bottomProducts && cluster.bottomProducts.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-                    <ArrowDownRight size={11} className="text-rose-500" /> Underperformers
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {cluster.bottomProducts.slice(0, 3).map((p, i) => (
-                      <li key={i} className="flex items-center justify-between text-xs">
-                        <span className="text-slate-700 truncate">{String(p.product_id).slice(0, 8)}…</span>
-                        <span className="text-rose-600 font-medium ml-2">
-                          {p.profit_margin != null ? `${Number(p.profit_margin).toFixed(1)}%` : "—"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {cluster.bottomProducts?.length > 0 && (
+                <ProductList
+                  title="Underperformers"
+                  icon={<ArrowDownRight size={12} className="text-rose-500" />}
+                  items={cluster.bottomProducts.slice(0, 4).map(p => ({
+                    name:  p.name ?? `${p.product_id.slice(0, 8)}…`,
+                    value: fmtMarginPct(p.profit_margin),
+                    tone:  "rose" as const,
+                  }))}
+                />
               )}
             </div>
-
           </div>
         </div>
       )}
@@ -143,38 +240,75 @@ function ClusterCard({
   )
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+// ─── Small building blocks ───────────────────────────────────────────────────
+
+function Metric({
+  icon: Icon, label, value, tone = "slate",
+}: {
+  icon: React.ElementType; label: string; value: string; tone?: "slate" | "rose"
+}) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">{label}</p>
-      <p className="text-sm font-semibold text-slate-900 mt-0.5">{value}</p>
-      {sub && <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>}
+      <div className="flex items-center gap-1 text-slate-400">
+        <Icon size={11} />
+        <span className="text-[10px] uppercase tracking-wide font-medium">{label}</span>
+      </div>
+      <p className={`text-sm font-semibold mt-1 ${tone === "rose" ? "text-rose-600" : "text-slate-900"}`}>{value}</p>
+    </div>
+  )
+}
+
+function ShareBar({ label, pct, barClass }: { label: string; pct: number; barClass: string }) {
+  const w = Math.max(0, Math.min(pct, 100))
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-[10px] w-12 text-slate-400 shrink-0">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+        <div className={`h-full ${barClass} transition-all`} style={{ width: `${w}%` }} />
+      </div>
+      <span className="text-[10px] text-slate-500 w-10 text-right shrink-0">{pct.toFixed(0)}%</span>
+    </div>
+  )
+}
+
+function ProductList({
+  title, icon, items,
+}: {
+  title: string
+  icon: React.ReactNode
+  items: { name: string; value: string; tone: "emerald" | "rose" }[]
+}) {
+  return (
+    <div>
+      <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+        {icon} {title}
+      </h4>
+      <ul className="space-y-1">
+        {items.map((p, i) => (
+          <li key={i} className="flex items-center justify-between gap-2 text-xs py-1 border-b border-slate-50 last:border-0">
+            <span className="text-slate-700 truncate">{p.name}</span>
+            <span className={`font-semibold shrink-0 ${p.tone === "emerald" ? "text-emerald-600" : "text-rose-600"}`}>
+              {p.value}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-2">
       <dt className="text-slate-500">{label}</dt>
       <dd className="font-medium text-slate-800">{value}</dd>
     </div>
   )
 }
 
-function fmtMoney(v: number | null | undefined): string {
-  if (v == null || isNaN(Number(v))) return "—"
-  const n = Number(v)
-  if (Math.abs(n) >= 1_000_000) return `EGP ${(n / 1_000_000).toFixed(2)}M`
-  if (Math.abs(n) >= 1_000)     return `EGP ${(n / 1_000).toFixed(1)}K`
-  return `EGP ${n.toLocaleString("en-EG", { maximumFractionDigits: 0 })}`
-}
-
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 type Tab = "products" | "customers"
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegmentsPage() {
   const role     = useBusinessRole()
@@ -204,7 +338,6 @@ export default function SegmentsPage() {
         return
       }
       if (data.will_run === false) {
-        // Pipeline correctly skipped — surface as success (the "no-op" is the right outcome).
         if (data.reason === "insufficient_products") {
           push(data.detail ?? "Not enough products to run segmentation", "success")
         } else {
@@ -214,7 +347,6 @@ export default function SegmentsPage() {
       }
       push("Refreshing — new clusters will appear in a moment", "success")
 
-      // Soft-poll for the updated data
       const tries = [3000, 8000, 15000]
       tries.forEach(ms => {
         setTimeout(() => {
@@ -230,6 +362,10 @@ export default function SegmentsPage() {
       setRefreshing(false)
     }
   }
+
+  const showRefresh =
+    tab === "products" && canWrite && segments != null &&
+    segments.productCount >= segments.minProductsNeeded
 
   return (
     <div className="min-h-screen bg-slate-50/60 px-6 py-8 max-w-7xl mx-auto">
@@ -253,7 +389,7 @@ export default function SegmentsPage() {
             AI-driven groups discovered in your data, refreshed automatically as it changes.
           </p>
         </div>
-        {tab === "products" && segments?.hasResults && canWrite && (
+        {showRefresh && (
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -277,10 +413,7 @@ export default function SegmentsPage() {
 
       {/* Content */}
       {tab === "products" ? (
-        <ProductsTabContent
-          segments={segments}
-          loading={loading}
-        />
+        <ProductsTabContent segments={segments} loading={loading} />
       ) : (
         <CustomersSoonState />
       )}
@@ -303,9 +436,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-        active
-          ? "border-sky-500 text-sky-700"
-          : "border-transparent text-slate-500 hover:text-slate-700"
+        active ? "border-sky-500 text-sky-700" : "border-transparent text-slate-500 hover:text-slate-700"
       }`}
     >
       <Icon size={14} />
@@ -321,30 +452,16 @@ function TabButton({
 
 // ─── Products tab ────────────────────────────────────────────────────────────
 
-function ProductsTabContent({
-  segments, loading,
-}: {
-  segments: SegmentsResponse | null
-  loading: boolean
-}) {
-  if (loading) {
-    return (
-      <div className="grid place-content-center py-24">
-        <div className="flex items-center gap-2 text-slate-400">
-          <RefreshCw size={20} className="animate-spin text-sky-300" />
-          <span className="text-sm">Loading segments…</span>
-        </div>
-      </div>
-    )
-  }
+function ProductsTabContent({ segments, loading }: { segments: SegmentsResponse | null; loading: boolean }) {
+  if (loading) return <SegmentsSkeleton />
 
   if (!segments) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-        <AlertTriangle size={32} className="text-slate-300 mx-auto mb-3" />
-        <p className="text-sm font-medium text-slate-700">Couldn't load segments right now.</p>
-        <p className="text-xs text-slate-500 mt-1">Try refreshing the page.</p>
-      </div>
+      <EmptyCard
+        icon={<AlertTriangle size={28} className="text-slate-300" />}
+        title="Couldn't load segments right now."
+        body="Try refreshing the page."
+      />
     )
   }
 
@@ -370,7 +487,7 @@ function ProductsTabContent({
     )
   }
 
-  // No results yet (enough products but no run completed)
+  // First-run pending
   if (!segments.hasResults) {
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
@@ -379,61 +496,47 @@ function ProductsTabContent({
         </div>
         <h3 className="text-lg font-semibold text-slate-900">First-run pending</h3>
         <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto">
-          You have enough products to segment ({segments.productCount}). Click "Refresh insights" above to run for the first time.
+          You have enough products to segment ({segments.productCount}). Click <strong>Refresh insights</strong> above to run for the first time.
         </p>
       </div>
     )
   }
 
-  // Got results
+  // Results
   const totalProducts = segments.clusters.reduce((a, c) => a + c.numProducts, 0) || 1
 
   return (
     <div className="space-y-6">
-
-      {/* Top summary card */}
+      {/* Summary */}
       <div className="grid sm:grid-cols-3 gap-4">
-        <SummaryStat
-          label="Total clusters"
-          value={segments.clusters.length.toString()}
-          icon={Layers}
-          accent
-        />
-        <SummaryStat
-          label="Products segmented"
-          value={totalProducts.toString()}
-          icon={Package}
-          sub={`Out of ${segments.productCount}`}
-        />
+        <SummaryStat label="Clusters discovered" value={segments.clusters.length.toString()} icon={Layers} accent />
+        <SummaryStat label="Products segmented" value={totalProducts.toString()} icon={Package} sub={`of ${segments.productCount}`} />
         <SummaryStat
           label="Last updated"
-          value={
-            segments.lastJobAt
-              ? new Date(segments.lastJobAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-              : "—"
-          }
+          value={segments.lastJobAt
+            ? new Date(segments.lastJobAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+            : "—"}
           icon={TrendingUp}
-          sub={
-            segments.lastJobAt
-              ? new Date(segments.lastJobAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-              : "Never"
-          }
+          sub={segments.lastJobAt
+            ? new Date(segments.lastJobAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+            : "Never"}
         />
       </div>
+
+      {/* Distribution */}
+      <DistributionBar clusters={segments.clusters} total={totalProducts} />
 
       {/* Cluster cards */}
       <div className="space-y-3">
         {segments.clusters
           .slice()
           .sort((a, b) => b.numProducts - a.numProducts)
-          .map(c => (
-            <ClusterCard key={c.cluster} cluster={c} total={totalProducts} />
-          ))}
+          .map(c => <ClusterCard key={c.cluster} cluster={c} total={totalProducts} />)}
       </div>
 
-      {/* Methodology footer */}
-      <details className="bg-white rounded-2xl border border-slate-100 p-5 open:shadow-sm transition-shadow">
-        <summary className="cursor-pointer text-sm font-medium text-slate-600 hover:text-slate-800 flex items-center gap-2">
+      {/* Methodology */}
+      <details className="group bg-white rounded-2xl border border-slate-100 p-5 open:shadow-sm transition-shadow">
+        <summary className="cursor-pointer text-sm font-medium text-slate-600 hover:text-slate-800 flex items-center gap-2 list-none">
           <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
           How are clusters built?
         </summary>
@@ -458,6 +561,8 @@ function ProductsTabContent({
   )
 }
 
+// ─── Summary stat ────────────────────────────────────────────────────────────
+
 function SummaryStat({
   label, value, sub, icon: Icon, accent,
 }: {
@@ -466,9 +571,7 @@ function SummaryStat({
 }) {
   return (
     <div className={`rounded-2xl p-5 border ${
-      accent
-        ? "bg-linear-to-br from-sky-500 to-sky-600 border-sky-500 text-white"
-        : "bg-white border-slate-100 text-slate-900"
+      accent ? "bg-linear-to-br from-sky-500 to-sky-600 border-sky-500 text-white" : "bg-white border-slate-100 text-slate-900"
     }`}>
       <div className="flex items-center justify-between mb-3">
         <div className={`p-2 rounded-xl ${accent ? "bg-white/15" : "bg-sky-50"}`}>
@@ -478,6 +581,59 @@ function SummaryStat({
       <p className={`text-2xl font-bold ${accent ? "text-white" : "text-slate-900"}`}>{value}</p>
       <p className={`text-xs mt-1 ${accent ? "text-sky-100" : "text-slate-400"}`}>{label}</p>
       {sub && <p className={`text-[11px] mt-0.5 ${accent ? "text-sky-100" : "text-slate-400"}`}>{sub}</p>}
+    </div>
+  )
+}
+
+// ─── Empty card ──────────────────────────────────────────────────────────────
+
+function EmptyCard({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
+      <div className="mx-auto mb-3 w-fit">{icon}</div>
+      <p className="text-sm font-medium text-slate-700">{title}</p>
+      <p className="text-xs text-slate-500 mt-1">{body}</p>
+    </div>
+  )
+}
+
+// ─── Loading skeleton (mirrors the real layout) ──────────────────────────────
+
+function SegmentsSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid sm:grid-cols-3 gap-4">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="rounded-2xl p-5 border border-slate-100 bg-white">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 mb-3" />
+            <div className="h-7 w-16 rounded bg-slate-100" />
+            <div className="h-3 w-24 rounded bg-slate-100 mt-2" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-slate-100 bg-white p-5">
+        <div className="h-4 w-40 rounded bg-slate-100 mb-4" />
+        <div className="h-3 rounded-full bg-slate-100" />
+      </div>
+      <div className="space-y-3">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="rounded-2xl border border-slate-100 bg-white p-5 flex gap-4">
+            <div className="w-11 h-11 rounded-xl bg-slate-100 shrink-0" />
+            <div className="flex-1">
+              <div className="h-4 w-40 rounded bg-slate-100" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                {[0, 1, 2, 3].map(j => (
+                  <div key={j}>
+                    <div className="h-2.5 w-12 rounded bg-slate-100" />
+                    <div className="h-3.5 w-10 rounded bg-slate-100 mt-1.5" />
+                  </div>
+                ))}
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100 mt-4" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

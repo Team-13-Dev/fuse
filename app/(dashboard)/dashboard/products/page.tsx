@@ -406,7 +406,7 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {segments?.hasResults && canWrite && (
+          {canWrite && segments && segments.productCount >= segments.minProductsNeeded && (
             <button
               onClick={handleRefreshInsights}
               disabled={refreshing}

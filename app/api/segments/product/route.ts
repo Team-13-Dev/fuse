@@ -8,8 +8,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/db"
 import { product, productSegment, productClusterSummary, business } from "@/db/schema"
-import { eq, count } from "drizzle-orm"
+import { eq, count, inArray, and } from "drizzle-orm"
 import { getBusinessContext } from "@/lib/get-business-context"
+
+// The pipeline stores top/bottom products keyed only by UUID. Resolve names so
+// the UI can show something readable instead of a truncated id.
+type RankedProduct = {
+  product_id:     string
+  profit?:        number
+  revenue?:       number
+  profit_margin?: number
+}
 
 const MIN_PRODUCTS_NEEDED = 15
 
@@ -49,6 +58,26 @@ export async function GET(req: NextRequest) {
     .where(eq(productClusterSummary.businessId, ctx.businessId))
     .orderBy(productClusterSummary.cluster)
 
+  // 3a. Resolve product names for the top/bottom lists (one batched query).
+  const rankedIds = new Set<string>()
+  for (const c of clusters) {
+    for (const p of (c.topProducts    as RankedProduct[] | null) ?? []) rankedIds.add(p.product_id)
+    for (const p of (c.bottomProducts as RankedProduct[] | null) ?? []) rankedIds.add(p.product_id)
+  }
+  const nameById = new Map<string, string>()
+  if (rankedIds.size > 0) {
+    const named = await db
+      .select({ id: product.id, name: product.name })
+      .from(product)
+      .where(and(
+        eq(product.businessId, ctx.businessId),
+        inArray(product.id, [...rankedIds]),
+      ))
+    for (const p of named) nameById.set(p.id, p.name)
+  }
+  const withNames = (list: RankedProduct[] | null) =>
+    (list ?? []).map(p => ({ ...p, name: nameById.get(p.product_id) ?? null }))
+
   return NextResponse.json({
     hasResults:        segments.length > 0,
     productCount,
@@ -76,8 +105,8 @@ export async function GET(req: NextRequest) {
       avgQuantity:      c.avgQuantity     ? Number(c.avgQuantity)     : null,
       revenueSharePct:  c.revenueSharePct ? Number(c.revenueSharePct) : null,
       profitSharePct:   c.profitSharePct  ? Number(c.profitSharePct)  : null,
-      topProducts:      c.topProducts    ?? [],
-      bottomProducts:   c.bottomProducts ?? [],
+      topProducts:      withNames(c.topProducts    as RankedProduct[] | null),
+      bottomProducts:   withNames(c.bottomProducts as RankedProduct[] | null),
     })),
   })
 }

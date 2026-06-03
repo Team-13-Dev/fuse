@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
 
-  const { customerId, items, address, orderVoucher, orderDiscount } = body;
+  const { customerName, customerEmail, customerId, items, address, orderVoucher, orderDiscount } = body;
 
   if (!customerId || typeof customerId !== "string") {
     return NextResponse.json({ error: "customerId is required" }, { status: 400 });
@@ -130,6 +130,8 @@ export async function POST(req: NextRequest) {
 
   // Insert order (decimal fields as strings)
   const [createdOrder] = await db.insert(order).values({
+    customerName,
+    customerEmail,
     customerId,
     businessId: ctx.businessId,
     total: String(total), 

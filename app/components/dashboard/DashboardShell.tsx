@@ -219,9 +219,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         user={user}
         onSwitch={handleSwitch}
       />
-      <JobsNotificationBar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        <Link href={"/chatbot"} className="rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center">
+        <Link href={"/chatbot"} className="rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center z-20">
           <BotMessageSquare className="text-xl"/>
         </Link>
         <TopHeader
@@ -230,6 +229,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           mobileMenuOpen={mobileOpen}
           onMobileMenuToggle={() => setMobileOpen(v => !v)}
         />
+        {/* Full-width banner under the header — not a flex sibling of the sidebar */}
+        <JobsNotificationBar />
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>

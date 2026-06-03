@@ -6,6 +6,8 @@ import { ORDER_STATUSES, OrderStatus } from "../page"
 
 // --- Types ---
 export type OrderFormData = {
+  customerName: string
+  customerEmail: string
   customerId: string
   status: OrderStatus
   items: {
@@ -29,6 +31,8 @@ interface Props {
 
 export function OrderDialog({ open, onOpenChange, onSave, canWrite }: Props) {
   const [form, setForm] = useState<OrderFormData>({
+    customerName: "",
+    customerEmail: "",
     customerId: "",
     status: "pending",
     items: [],
