@@ -497,7 +497,15 @@ function WebsiteBuilder() {
               <p style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"#94a3b8", padding:"0 4px", marginBottom:6 }}>Components</p>
               <SegmentedSwitch options={["Landing", "Products", "Cart"]} onChange={(val : any) => setActiveCat(val)}/>
               {BLOCK_DEFS.map((def) => (
+                activeCat ?
                 def.category.includes(activeCat?.toLowerCase() || "") &&
+                <SidebarBlock
+                  key={def.type}
+                  def={def}
+                  onHover={(type: BlockType) => setHoverPreviewType(type)}
+                  onLeave={() => setHoverPreviewType(null)}
+                />
+                :
                 <SidebarBlock
                   key={def.type}
                   def={def}

@@ -23,11 +23,6 @@ export default function CRMAIInsights() {
                 Insights
             </span>
           </div>
-          <div className="w-px h-6 bg-gray-300"></div>
-          <button className="flex items-center text-sm font-medium text-gray-500 hover:text-gray-900">
-            Workspace: Local Business Inc.
-            <ChevronDown className="w-4 h-4 ml-1" />
-          </button>
         </div>
 
         <div className="flex items-center space-x-6">

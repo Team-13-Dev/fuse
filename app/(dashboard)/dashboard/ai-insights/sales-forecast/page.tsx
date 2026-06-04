@@ -1,10 +1,9 @@
 "use client"
 import { useState, useEffect } from 'react';
 import { 
-  ChevronDown, Bell, Search, 
-  TrendingUp, AlertCircle, UserCheck, 
-  ArrowUpRight, Clock, Zap, Target,
-  SlidersHorizontal, Brain, RefreshCw, Calendar, Loader2,
+  TrendingUp, AlertCircle, 
+  ArrowUpRight,  Zap, 
+    RefreshCw, Calendar, Loader2,
   BarChart2,
   AlertTriangle,
   Activity
@@ -36,10 +35,10 @@ type FrequencyType = "30" | "90" | "D";
 
 // --- HELPER FUNCTIONS ---
 const formatCurrency = (val: number): string => 
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(val);
 
 const formatShortCurrency = (val: number): string => 
-  `$${Math.round(val / 1000)}k`;
+  `EGP ${Math.round(val / 1000)}k`;
 
 const formatPercent = (val: number): string => 
   `${(val > 0 ? '+' : '')}${(val * 100).toFixed(0)}%`;
@@ -62,76 +61,62 @@ export default function SalesForecastHub() {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch data on mount
-  useEffect(() => {
-    const fetchForecastData = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/fore-cast');
-        if (!response.ok) {
-          throw new Error('Failed to fetch forecast data');
+// Fetch data on mount with Caching
+  const fetchForecastData = async (forceRefresh = false) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // --- CACHE CHECK ---
+      const CACHE_KEY = "forecast_ai_data";
+      const TIME_KEY = "forecast_ai_timestamp";
+      const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        const cachedTime = localStorage.getItem(TIME_KEY);
+
+        if (cachedData && cachedTime) {
+          const isCacheValid = (Date.now() - parseInt(cachedTime, 10)) < CACHE_DURATION;
+          if (isCacheValid) {
+            setForecastData(JSON.parse(cachedData));
+            setIsLoading(false);
+            return; // Exit early, no API calls made!
+          }
         }
-        const data: ForecastData = await response.json();
-
-        const forecastRes = await fetch("https://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(data)
-        })
-        const forecastData = await forecastRes.json();
-        console.log(forecastData);
-        setForecastData(forecastData);
-      } catch (err) {
-        console.error(err);
-        setError("Unable to load forecast data.");
-      } finally {
-        setIsLoading(false);
       }
-    };
 
+      // --- FETCH FRESH DATA ---
+      const response = await fetch('/api/fore-cast');
+      if (!response.ok) throw new Error('Failed to fetch base data');
+      const data: ForecastData = await response.json();
+
+      const forecastRes = await fetch("https://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+      });
+      
+      if (!forecastRes.ok) throw new Error('Failed to fetch AI predictions');
+      const newForecastData = await forecastRes.json();
+
+      // --- SAVE TO CACHE ---
+      localStorage.setItem(CACHE_KEY, JSON.stringify(newForecastData));
+      localStorage.setItem(TIME_KEY, Date.now().toString());
+
+      setForecastData(newForecastData);
+    } catch (err) {
+      console.error(err);
+      setError("Unable to load forecast data.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchForecastData();
   }, []);
 
-  const handlePredict = async () => {
-    setIsPredicting(true);
-    setStatusMessage("Initializing forecast model...");
-    
-    const dummyData: SalesDataPoint[] = Array.from({ length: 1000 }, (_, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() - (100 - i));
-        return {
-            "Order Date": date.toISOString().split("T")[0],
-            Calculated_Total: Math.floor(Math.random() * 500) + 100,
-        };
-    });
-
-    try {
-        const response = await fetch(`http://127.0.0.1:8000/predict`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json", 
-            "X-Frequency": frequency 
-          },
-          body: JSON.stringify({
-              sales_data: dummyData,
-              callback_url: `http://localhost:3000/api/webhooks/forecast` 
-          }),
-        });
-
-      if (response.ok) {
-        setStatusMessage("Forecast queued. Awaiting webhook response.");
-        setTimeout(() => setStatusMessage(""), 5000);
-      } else {
-        setStatusMessage("Failed to initiate forecast.");
-      }
-    } catch (error) {
-      console.error("Prediction error:", error);
-      setStatusMessage("Network error occurred.");
-    } finally {
-      setIsPredicting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-white">
@@ -147,24 +132,20 @@ export default function SalesForecastHub() {
             </span>
           </div>
           <div className="w-px h-6 bg-gray-300"></div>
-          <button className="flex items-center text-sm font-medium text-gray-500 hover:text-gray-900">
-            Workspace: Local Business Inc.
-            <ChevronDown className="w-4 h-4 ml-1" />
-          </button>
         </div>
 
         <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-4 text-gray-500">
-            <Search className="w-5 h-5 cursor-pointer hover:text-gray-900" />
-            <Bell className="w-5 h-5 cursor-pointer hover:text-gray-900" />
-          </div>
           <div className="w-px h-6 bg-gray-300"></div>
-          <button className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Sync Data
-          </button>
           <button 
-            onClick={handlePredict}
+            onClick={() => fetchForecastData(true)}
+            disabled={isLoading}
+            className="bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 text-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
+            >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Syncing...' : 'Sync Data'}
+            </button>
+          <button 
+            onClick={() => fetchForecastData(false)}
             disabled={isPredicting}
             className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-5 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
           >
@@ -299,49 +280,6 @@ export default function SalesForecastHub() {
             ) : null}
           </div>
         </main>
-
-        {/* RIGHT SIDEBAR (Parameters) */}
-        <aside className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-y-auto">
-          <div className="p-6 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900 flex items-center">
-              <SlidersHorizontal className="w-4 h-4 mr-2 text-gray-500" />
-              Forecast Parameters
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">Configure inputs to adjust active predictions.</p>
-          </div>
-
-          <div className="p-6 flex-1">
-            
-            {/* Time Horizon Selector */}
-            <h3 className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-3 flex items-center">
-              <Calendar className="w-3 h-3 mr-1" /> Time Horizon
-            </h3>
-            
-            <div className="bg-gray-100 p-1 rounded-lg flex mb-8">
-              <button 
-                onClick={() => setFrequency("30")}
-                className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${frequency === '30' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                30 Days
-              </button>
-              <button 
-                onClick={() => setFrequency("90")}
-                className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${frequency === '90' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                90 Days
-              </button>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-8">
-              <h4 className="text-sm font-bold text-blue-900 mb-1">Data Freshness</h4>
-              <p className="text-xs text-blue-700 mb-3">Your sales dataset was synced 12 mins ago. The forecast currently reflects the latest pipeline data.</p>
-              <button className="text-xs font-semibold bg-white text-blue-600 px-3 py-2 rounded-md border border-blue-200 hover:bg-blue-50 w-full transition-colors">
-                View Data Sources
-              </button>
-            </div>
-          </div>
-        </aside>
-
       </div>
     </div>
   );
