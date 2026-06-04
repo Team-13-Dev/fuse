@@ -6,13 +6,9 @@ import { Send, Loader2, Sparkles, User } from "lucide-react";
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
-};
-
-interface FuseChatProps {
-  businessId: string;
 }
 
-export default function FuseChat({ businessId }: FuseChatProps) {
+export default function FuseChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -188,7 +184,7 @@ export default function FuseChat({ businessId }: FuseChatProps) {
             </button>
           </form>
         </div>
-        
+      
       </div>
     </div>
   );

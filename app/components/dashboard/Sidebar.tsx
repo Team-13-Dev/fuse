@@ -7,6 +7,7 @@ import {
   ShoppingCart, BarChart3, Megaphone, Ticket, Settings,
   Zap, ChevronsLeft, ChevronsRight,
   BarChart2,
+  BotMessageSquare,
 } from "lucide-react"
 import {
   SidebarStorePanel,
@@ -44,7 +45,7 @@ export const NAV_SECTIONS = [
     label: "Growth",
     items: [
       { label: "Campaigns",    href: "/dashboard/campaigns",    icon: Megaphone,    soon: true    },
-      { label: "AI Insights",  href: "/dashboard/ai-insights",  icon: Sparkles,     soon: true    },
+      { label: "AI Insights",  href: "/dashboard/ai-insights",  icon: Sparkles,     soon: false    },
       { label: "Integrations", href: "/dashboard/integrations", icon: Zap,          soon: true    },
     ],
   },

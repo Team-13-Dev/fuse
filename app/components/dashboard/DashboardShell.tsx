@@ -15,6 +15,7 @@ import {
   type SidebarBusiness,
 } from "./SidebarStorePanel"
 import JobsNotificationBar from "./JobsNotificationBar"
+import { Router } from "next/router"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -355,7 +356,8 @@ function TopHeader({
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { data: session } = authClient.useSession()
-  const router = useRouter()
+  const router = useRouter();
+  const isOnChat = usePathname().includes("chatbot")
 
   const [businesses,       setBusinesses]       = useState<SidebarBusiness[]>([])
   const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null)
@@ -416,7 +418,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <Link
           href="/chatbot"
-          className="rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center z-20"
+          className={`rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center z-20 ${isOnChat && "hidden"}`}
         >
           <BotMessageSquare className="text-xl" />
         </Link>
