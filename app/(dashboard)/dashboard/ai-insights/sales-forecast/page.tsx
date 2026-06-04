@@ -90,7 +90,8 @@ export default function SalesForecastHub() {
       const response = await fetch('/api/fore-cast');
       if (!response.ok) throw new Error('Failed to fetch base data');
       const data: ForecastData = await response.json();
-
+      console.log(data);
+      
       const forecastRes = await fetch("https://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

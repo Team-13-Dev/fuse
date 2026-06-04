@@ -14,7 +14,7 @@ export interface ChatMessage {
 }
 
 function getGroqClient() {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GROQ_CHAT_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY env var is not set");
   return new OpenAI({ baseURL: "https://api.groq.com/openai/v1", apiKey });
 }
