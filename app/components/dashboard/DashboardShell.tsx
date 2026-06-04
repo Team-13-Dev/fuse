@@ -417,7 +417,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <Link
-          href="/chatbot"
+          href="/dashboard/chatbot"
           className={`rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center z-20 ${isOnChat && "hidden"}`}
         >
           <BotMessageSquare className="text-xl" />
