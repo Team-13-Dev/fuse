@@ -50,6 +50,7 @@ export default function JobsNotificationBar() {
         if (justFinished.length > 0) {
           setToast("Insights updated ✓")
           setTimeout(() => setToast(null), 4000)
+          window.dispatchEvent(new CustomEvent("insights:updated"))
         }
         prevIds.current = currentIds
         setJobs(data.jobs)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { product } from "@/db/schema";
-import { eq, ilike, and, or, lte, gt, desc, count } from "drizzle-orm";
+import { eq, ilike, and, or, lte, gt, desc, count, sql } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 import { triggerProductSegmentation } from "@/lib/segmentation/trigger-product";
 
@@ -38,12 +38,21 @@ export async function GET(req: NextRequest) {
 
   const where = and(...conditions);
 
-  const [rows, countResult] = await Promise.all([
+  const allWhere = eq(product.businessId, ctx.businessId);
+
+  const [rows, countResult, statsResult] = await Promise.all([
     db.select().from(product).where(where).orderBy(desc(product.id)).limit(limit).offset(offset),
     db.select({ n: count() }).from(product).where(where),
+    db.select({
+      outOfStock:   sql<number>`COUNT(*) FILTER (WHERE ${product.stock} = 0)`,
+      lowStock:     sql<number>`COUNT(*) FILTER (WHERE ${product.stock} > 0 AND ${product.stock} <= 10)`,
+      catalogValue: sql<number>`COALESCE(SUM(${product.price}::numeric * ${product.stock}), 0)`,
+      avgMargin:    sql<number | null>`AVG((${product.price}::numeric - ${product.cost}::numeric) / NULLIF(${product.price}::numeric, 0) * 100) FILTER (WHERE ${product.cost} IS NOT NULL AND ${product.cost}::numeric > 0)`,
+    }).from(product).where(allWhere),
   ]);
 
   const total = Number(countResult[0].n);
+  const s     = statsResult[0];
 
   return NextResponse.json({
     data: rows,
@@ -54,6 +63,12 @@ export async function GET(req: NextRequest) {
       totalPages: Math.ceil(total / limit),
       hasNext:    page * limit < total,
       hasPrev:    page > 1,
+    },
+    stats: {
+      outOfStock:   Number(s.outOfStock),
+      lowStock:     Number(s.lowStock),
+      catalogValue: Number(s.catalogValue),
+      avgMargin:    s.avgMargin != null ? Number(s.avgMargin) : null,
     },
   });
 }

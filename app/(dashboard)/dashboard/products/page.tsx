@@ -166,6 +166,9 @@ export default function ProductsPage() {
   const [pagination, setPagination] = useState<{
     page: number; limit: number; total: number; totalPages: number; hasNext: boolean; hasPrev: boolean
   } | null>(null)
+  const [stats, setStats] = useState<{
+    outOfStock: number; lowStock: number; catalogValue: number; avgMargin: number | null
+  } | null>(null)
 
   const [segments,   setSegments]   = useState<SegmentsResponse | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -221,6 +224,7 @@ export default function ProductsPage() {
       const json = await res.json()
       setProducts(json.data)
       setPagination(json.pagination)
+      if (json.stats) setStats(json.stats)
     } catch {
       push("Failed to load products", "error")
     } finally {
@@ -237,6 +241,17 @@ export default function ProductsPage() {
       .then(r => r.ok ? r.json() : null)
       .then(setSegments)
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    function onInsightsUpdated() {
+      fetch("/api/segments/product")
+        .then(r => r.ok ? r.json() : null)
+        .then(d => d && setSegments(d))
+        .catch(() => {})
+    }
+    window.addEventListener("insights:updated", onInsightsUpdated)
+    return () => window.removeEventListener("insights:updated", onInsightsUpdated)
   }, [])
 
   const clusterByProduct = new Map<string, { name: string; cluster: number }>()
@@ -372,14 +387,9 @@ export default function ProductsPage() {
 
   // ── Metrics ────────────────────────────────────────────────────────────────
   const total      = pagination?.total ?? 0
-  const totalValue = products.reduce((acc, p) => acc + Number(p.price) * (p.stock ?? 0), 0)
-  const outOfStock = products.filter(p => (p.stock ?? 0) === 0).length
-  const avgMargin  = (() => {
-    const wc = products.filter(p => p.cost && Number(p.cost) > 0)
-    if (!wc.length) return null
-    const m = wc.reduce((a, p) => a + ((Number(p.price) - Number(p.cost!)) / Number(p.price)) * 100, 0) / wc.length
-    return `${m.toFixed(1)}%`
-  })()
+  const totalValue = stats?.catalogValue ?? 0
+  const outOfStock = stats?.outOfStock ?? 0
+  const avgMargin  = stats?.avgMargin != null ? `${stats.avgMargin.toFixed(1)}%` : null
 
   const isFiltered = !!dSearch || !!stockFilter
 

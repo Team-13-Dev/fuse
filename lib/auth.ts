@@ -52,12 +52,31 @@
           return;
         }
 
-        if (!ctx.path.startsWith("/sign-in/email")) {
+        const isSignIn = ctx.path.startsWith("/sign-in/email");
+        const isSignUp = ctx.path.startsWith("/sign-up/email");
+        if (!isSignIn && !isSignUp) {
           return;
         }
 
         const userId = ctx.context.newSession?.user?.id;
         if (!userId) return;
+
+        // For brand-new sign-ups there is no business yet — set the cookie with
+        // just userId so /api/businesses/create can read it during onboarding.
+        if (isSignUp) {
+          ctx.setCookie(
+            "business_ctx",
+            JSON.stringify({ userId }),
+            {
+              httpOnly: true,
+              secure:   process.env.NODE_ENV === "production",
+              sameSite: "lax",
+              maxAge:   60 * 60 * 24 * 7,
+              path:     "/",
+            }
+          );
+          return;
+        }
 
         // 1. Check if user owns any business
         const ownedBusiness = await db

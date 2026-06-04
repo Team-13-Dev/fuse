@@ -355,6 +355,17 @@ export default function SegmentsPage() {
       .catch(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    function onInsightsUpdated() {
+      fetch("/api/segments/product")
+        .then(r => r.ok ? r.json() : null)
+        .then(d => d && setSegments(d))
+        .catch(() => {})
+    }
+    window.addEventListener("insights:updated", onInsightsUpdated)
+    return () => window.removeEventListener("insights:updated", onInsightsUpdated)
+  }, [])
+
   async function handleRefresh() {
     setRefreshing(true)
     try {
