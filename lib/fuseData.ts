@@ -1,475 +1,331 @@
 /**
  * lib/fuseData.ts
  * ──────────────────────────────────────────────────────────────
- * Handles Excel loading, aggregation, ChromaDB indexing, and
- * the rich data summary string injected into the system prompt.
+ * No ChromaDB. No external vector DB.
+ *
+ * Embeddings are computed once via @xenova/transformers and
+ * stored in the module-level cache as plain Float32Arrays.
+ * Retrieval is cosine similarity — fast enough for hundreds of
+ * chunks and zero extra infrastructure.
+ *
+ * CACHE BEHAVIOUR
+ * ───────────────
+ * _cache    — Map<businessId, FuseState>  warm results
+ * _inflight — Map<businessId, Promise>    dedup concurrent cold starts
+ *
+ * Long-running server (Docker / Railway): lives for process lifetime.
+ * Vercel serverless: lives within Lambda warm window (~5 min idle).
  * ──────────────────────────────────────────────────────────────
  */
 
-import * as XLSX from "xlsx";
-import { ChromaClient, Collection } from "chromadb";
+import { db } from "@/db";
+import { order, orderItem, product, business } from "@/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { pipeline } from "@xenova/transformers";
 
 // ── Types ──────────────────────────────────────────────────────
 
 export interface Row {
-  order_date: Date;
-  product_id: string;
-  revenue: number;
-  profit: number;
+  order_date:    Date;
+  product_id:    string;
+  product_name:  string;
+  revenue:       number;
+  profit:        number;
   profit_margin: number;
-  quantity: number;
-  price: number;
-  year: number;
-  month: string; // "YYYY-MM"
+  quantity:      number;
+  price:         number;
+  cost:          number;
+  year:          number;
+  month:         string;
 }
 
 export interface YearlyStats {
-  year: number;
-  revenue: number;
-  profit: number;
-  orders: number;
-  margin: number;
-  rev_growth: number | null;
+  year:          number;
+  revenue:       number;
+  profit:        number;
+  orders:        number;
+  margin:        number;
+  rev_growth:    number | null;
   profit_growth: number | null;
 }
 
-// ── Singleton state ────────────────────────────────────────────
-
-let _rows: Row[] | null = null;
-let _collection: Collection | null = null;
-let _dataSummary: string | null = null;
-let _yearlyStats: YearlyStats[] | null = null;
-let _embedder: ((texts: string[]) => Promise<number[][]>) | null = null;
-
-// ── Helpers ────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-}
-function fmtPct(n: number) {
-  return (n * 100).toFixed(1) + "%";
-}
-function toYYYYMM(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+interface VectorChunk {
+  id:        string;
+  document:  string;
+  embedding: Float32Array;
 }
 
-// ── Embedding helper ───────────────────────────────────────────
+export interface FuseState {
+  rows:        Row[];
+  chunks:      VectorChunk[];
+  dataSummary: string;
+  yearlyStats: YearlyStats[];
+}
+
+// ── Module-level cache ─────────────────────────────────────────
+
+const _cache:    Map<string, FuseState>           = new Map();
+const _inflight: Map<string, Promise<FuseState>>  = new Map();
+
+// ── Embedder singleton ─────────────────────────────────────────
+
+let _embedder: ((texts: string[]) => Promise<Float32Array[]>) | null = null;
 
 async function getEmbedder() {
   if (!_embedder) {
-    const extractor = await pipeline(
-      "feature-extraction",
-      "Xenova/all-MiniLM-L6-v2"
-    );
+    const extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
     _embedder = async (texts: string[]) => {
-      const results: number[][] = [];
+      const out: Float32Array[] = [];
       for (const text of texts) {
-        const out = await extractor(text, {
-          pooling: "mean",
-          normalize: true,
-        });
-        results.push(Array.from(out.data as Float32Array));
+        const result = await extractor(text, { pooling: "mean", normalize: true });
+        out.push(new Float32Array(result.data as Float32Array));
       }
-      return results;
+      return out;
     };
   }
   return _embedder;
 }
 
-// ── 1. Load Excel ──────────────────────────────────────────────
+// ── Cosine similarity retrieval ────────────────────────────────
 
-export function loadData(filePath: string): Row[] {
-  const wb = XLSX.readFile(filePath);
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const raw: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, {
-    defval: null,
-  });
-
-  const rows: Row[] = [];
-  for (const r of raw) {
-    // Normalise column names (strip whitespace)
-    const rec: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(r)) rec[k.trim()] = v;
-
-    const order_date_raw = rec["order_date"];
-    const product_id = rec["product_id"];
-    const revenue = Number(rec["revenue"]);
-
-    if (!order_date_raw || !product_id || isNaN(revenue)) continue;
-
-    // Excel serial date or string
-    let order_date: Date;
-    if (typeof order_date_raw === "number") {
-      order_date = XLSX.SSF.parse_date_code
-        ? new Date(
-            XLSX.SSF.parse_date_code(order_date_raw).y,
-            XLSX.SSF.parse_date_code(order_date_raw).m - 1,
-            XLSX.SSF.parse_date_code(order_date_raw).d
-          )
-        : new Date(Math.round((order_date_raw - 25569) * 86400 * 1000));
-    } else {
-      order_date = new Date(order_date_raw as string);
-    }
-    if (isNaN(order_date.getTime())) continue;
-
-    rows.push({
-      order_date,
-      product_id: String(product_id),
-      revenue,
-      profit: Number(rec["profit"]) || 0,
-      profit_margin: Number(rec["profit_margin"]) || 0,
-      quantity: Number(rec["quantity"]) || 0,
-      price: Number(rec["price"]) || 0,
-      year: order_date.getFullYear(),
-      month: toYYYYMM(order_date),
-    });
+function cosineSim(a: Float32Array, b: Float32Array): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot   += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
   }
-
-  return rows;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
-// ── 2. Build aggregate RAG chunks ─────────────────────────────
+export async function queryChunks(
+  query:   string,
+  chunks:  VectorChunk[],
+  topK = 12
+): Promise<string[]> {
+  const embedder   = await getEmbedder();
+  const [queryVec] = await embedder([query]);
 
-export function buildAggregateDocs(rows: Row[]): {
-  documents: string[];
-  ids: string[];
-} {
-  const documents: string[] = [];
-  const ids: string[] = [];
+  return chunks
+    .map((c) => ({ doc: c.document, score: cosineSim(queryVec, c.embedding) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((c) => c.doc);
+}
 
-  // Monthly aggregates
-  const monthMap = new Map<
-    string,
-    { revenue: number; profit: number; orders: number; margin: number; qty: number }
-  >();
-  for (const r of rows) {
-    const key = r.month;
-    const cur = monthMap.get(key) ?? {
-      revenue: 0,
-      profit: 0,
-      orders: 0,
-      margin: 0,
-      qty: 0,
-    };
-    monthMap.set(key, {
-      revenue: cur.revenue + r.revenue,
-      profit: cur.profit + r.profit,
-      orders: cur.orders + 1,
-      margin: cur.margin + r.profit_margin,
-      qty: cur.qty + r.quantity,
-    });
-  }
-  for (const [month, v] of [...monthMap.entries()].sort()) {
-    const count = rows.filter((r) => r.month === month).length;
-    documents.push(
-      `Month ${month}: Revenue=${fmt(v.revenue)} EGP, ` +
-        `Profit=${fmt(v.profit)} EGP, Orders=${fmt(v.orders)}, ` +
-        `Margin=${fmtPct(v.margin / count)}, Units Sold=${fmt(v.qty)}`
+// ── Formatters ─────────────────────────────────────────────────
+
+export const fmt    = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+export const fmtPct = (n: number) => (n * 100).toFixed(1) + "%";
+const toYYYYMM      = (d: Date)   =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+// ── 1. Load from Postgres via Drizzle ─────────────────────────
+
+async function loadDataFromDB(businessId: string): Promise<Row[]> {
+  const raw = await db
+    .select({
+      order_date:    order.createdAt,
+      product_id:    orderItem.productId,
+      product_name:  product.name,
+      unit_price:    orderItem.unitPrice,
+      quantity:      orderItem.quantity,
+      item_discount: orderItem.itemDiscount,
+      cost:          product.cost,
+    })
+    .from(order)
+    .innerJoin(orderItem, eq(orderItem.orderId, order.id))
+    .innerJoin(product,   eq(product.id, orderItem.productId))
+    .where(
+      and(
+        eq(order.businessId, businessId),
+        sql`${order.status} NOT IN ('cancelled', 'refunded')`
+      )
     );
-    ids.push(`monthly_${month}`);
-  }
 
-  // Product aggregates
-  const prodMap = new Map<
-    string,
-    {
-      revenue: number;
-      profit: number;
-      orders: number;
-      margin: number;
-      qty: number;
-      price: number;
-      count: number;
-    }
-  >();
-  for (const r of rows) {
-    const cur = prodMap.get(r.product_id) ?? {
-      revenue: 0,
-      profit: 0,
-      orders: 0,
-      margin: 0,
-      qty: 0,
-      price: 0,
-      count: 0,
-    };
-    prodMap.set(r.product_id, {
-      revenue: cur.revenue + r.revenue,
-      profit: cur.profit + r.profit,
-      orders: cur.orders + 1,
-      margin: cur.margin + r.profit_margin,
-      qty: cur.qty + r.quantity,
-      price: cur.price + r.price,
-      count: cur.count + 1,
+  return raw
+    .filter((r : any) => r.order_date && r.product_id && r.unit_price !== null)
+    .map((r : any) => {
+      const price    = Number(r.unit_price    ?? 0);
+      const qty      = r.quantity             ?? 1;
+      const discount = Number(r.item_discount ?? 0);
+      const cost     = Number(r.cost          ?? 0);
+      const revenue  = (price - discount) * qty;
+      const profit   = revenue - cost * qty;
+      const d        = new Date(r.order_date!);
+      return {
+        order_date:    d,
+        product_id:    r.product_id,
+        product_name:  r.product_name,
+        revenue,
+        profit,
+        profit_margin: revenue > 0 ? profit / revenue : 0,
+        quantity:      qty,
+        price,
+        cost,
+        year:          d.getFullYear(),
+        month:         toYYYYMM(d),
+      };
     });
-  }
-  for (const [pid, v] of prodMap) {
-    documents.push(
-      `Product ${pid}: Total Revenue=${fmt(v.revenue)} EGP, ` +
-        `Total Profit=${fmt(v.profit)} EGP, Orders=${fmt(v.orders)}, ` +
-        `Avg Margin=${fmtPct(v.margin / v.count)}, Units Sold=${fmt(v.qty)}, ` +
-        `Avg Price=${fmt(v.price / v.count)} EGP`
-    );
-    ids.push(`product_${pid}`);
-  }
+}
 
-  // Yearly aggregates
-  const yearMap = new Map<
-    number,
-    { revenue: number; profit: number; orders: number; margin: number; qty: number; count: number }
-  >();
+// ── 2. Build aggregate text chunks ────────────────────────────
+
+function buildAggregateDocuments(rows: Row[]): { id: string; document: string }[] {
+  const out: { id: string; document: string }[] = [];
+
+  type Agg = { revenue: number; profit: number; orders: number; marginSum: number; qty: number; count: number };
+  const merge = (c: Agg | undefined, r: Row): Agg => ({
+    revenue:   (c?.revenue   ?? 0) + r.revenue,
+    profit:    (c?.profit    ?? 0) + r.profit,
+    orders:    (c?.orders    ?? 0) + 1,
+    marginSum: (c?.marginSum ?? 0) + r.profit_margin,
+    qty:       (c?.qty       ?? 0) + r.quantity,
+    count:     (c?.count     ?? 0) + 1,
+  });
+
+  // Monthly
+  const monthMap = new Map<string, Agg>();
+  for (const r of rows) monthMap.set(r.month, merge(monthMap.get(r.month), r));
+  for (const [month, v] of [...monthMap.entries()].sort())
+    out.push({ id: `monthly_${month}`, document: `Month ${month}: Revenue=${fmt(v.revenue)} EGP, Profit=${fmt(v.profit)} EGP, Orders=${fmt(v.orders)}, Margin=${fmtPct(v.marginSum / v.count)}, Units Sold=${fmt(v.qty)}` });
+
+  // Product
+  const prodMap = new Map<string, Agg & { name: string; priceSum: number }>();
   for (const r of rows) {
-    const cur = yearMap.get(r.year) ?? {
-      revenue: 0,
-      profit: 0,
-      orders: 0,
-      margin: 0,
-      qty: 0,
-      count: 0,
-    };
-    yearMap.set(r.year, {
-      revenue: cur.revenue + r.revenue,
-      profit: cur.profit + r.profit,
-      orders: cur.orders + 1,
-      margin: cur.margin + r.profit_margin,
-      qty: cur.qty + r.quantity,
-      count: cur.count + 1,
-    });
+    const c = prodMap.get(r.product_id);
+    prodMap.set(r.product_id, { ...merge(c, r), name: r.product_name, priceSum: (c?.priceSum ?? 0) + r.price });
   }
-  for (const [year, v] of [...yearMap.entries()].sort((a, b) => a[0] - b[0])) {
-    documents.push(
-      `Year ${year}: Revenue=${fmt(v.revenue)} EGP, ` +
-        `Profit=${fmt(v.profit)} EGP, Orders=${fmt(v.orders)}, ` +
-        `Avg Margin=${fmtPct(v.margin / v.count)}, Units Sold=${fmt(v.qty)}`
-    );
-    ids.push(`year_${year}`);
-  }
+  for (const [pid, v] of prodMap)
+    out.push({ id: `product_${pid}`, document: `Product "${v.name}": Total Revenue=${fmt(v.revenue)} EGP, Total Profit=${fmt(v.profit)} EGP, Orders=${fmt(v.orders)}, Avg Margin=${fmtPct(v.marginSum / v.count)}, Units Sold=${fmt(v.qty)}, Avg Price=${fmt(v.priceSum / v.count)} EGP` });
 
-  // Product × Year aggregates
-  const pyMap = new Map<
-    string,
-    { revenue: number; profit: number; margin: number; count: number }
-  >();
+  // Yearly
+  const yearMap = new Map<number, Agg>();
+  for (const r of rows) yearMap.set(r.year, merge(yearMap.get(r.year), r));
+  for (const [year, v] of [...yearMap.entries()].sort((a, b) => a[0] - b[0]))
+    out.push({ id: `year_${year}`, document: `Year ${year}: Revenue=${fmt(v.revenue)} EGP, Profit=${fmt(v.profit)} EGP, Orders=${fmt(v.orders)}, Avg Margin=${fmtPct(v.marginSum / v.count)}, Units Sold=${fmt(v.qty)}` });
+
+  // Product × Year
+  const pyMap = new Map<string, Agg & { name: string }>();
   for (const r of rows) {
     const key = `${r.product_id}__${r.year}`;
-    const cur = pyMap.get(key) ?? {
-      revenue: 0,
-      profit: 0,
-      margin: 0,
-      count: 0,
-    };
-    pyMap.set(key, {
-      revenue: cur.revenue + r.revenue,
-      profit: cur.profit + r.profit,
-      margin: cur.margin + r.profit_margin,
-      count: cur.count + 1,
-    });
+    pyMap.set(key, { ...merge(pyMap.get(key), r), name: r.product_name });
   }
   for (const [key, v] of pyMap) {
     const [pid, year] = key.split("__");
-    documents.push(
-      `Product ${pid} in ${year}: Revenue=${fmt(v.revenue)} EGP, ` +
-        `Profit=${fmt(v.profit)} EGP, Margin=${fmtPct(v.margin / v.count)}`
-    );
-    ids.push(`prod_year_${pid}_${year}`);
+    out.push({ id: `prod_year_${pid}_${year}`, document: `Product "${v.name}" in ${year}: Revenue=${fmt(v.revenue)} EGP, Profit=${fmt(v.profit)} EGP, Margin=${fmtPct(v.marginSum / v.count)}` });
   }
 
-  return { documents, ids };
+  return out;
 }
 
-// ── 3. Index into ChromaDB ─────────────────────────────────────
+// ── 3. Embed all chunks into memory ───────────────────────────
 
-export async function initCollection(
-  rows: Row[],
-  chromaPath = "./chroma_db_v2"
-): Promise<Collection> {
-  if (_collection) return _collection;
-
-  const client = new ChromaClient({ path: chromaPath });
+async function buildVectorChunks(rows: Row[]): Promise<VectorChunk[]> {
   const embedder = await getEmbedder();
+  const docs     = buildAggregateDocuments(rows);
 
-  const embeddingFunction = {
-    generate: async (texts: string[]) => embedder(texts),
-  };
+  // Embed in batches to avoid memory spikes
+  const BATCH  = 64;
+  const chunks: VectorChunk[] = [];
 
-  const collection = await client.getOrCreateCollection({
-    name: "fuse_aggregates",
-    embeddingFunction,
-  });
-
-  const existing = await collection.count();
-  if (existing > 0) {
-    console.log(`Already indexed (${existing} chunks)`);
-  } else {
-    const { documents, ids } = buildAggregateDocs(rows);
-    console.log(`Indexing ${documents.length} aggregate chunks...`);
-    const BATCH = 200;
-    for (let i = 0; i < documents.length; i += BATCH) {
-      const batch_docs = documents.slice(i, i + BATCH);
-      const batch_ids = ids.slice(i, i + BATCH);
-      const embeddings = await embedder(batch_docs);
-      await collection.add({
-        documents: batch_docs,
-        ids: batch_ids,
-        embeddings,
-      });
-      console.log(`  → ${i} to ${Math.min(i + BATCH, documents.length)}`);
+  for (let i = 0; i < docs.length; i += BATCH) {
+    const slice      = docs.slice(i, i + BATCH);
+    const embeddings = await embedder(slice.map((d) => d.document));
+    for (let j = 0; j < slice.length; j++) {
+      chunks.push({ id: slice[j].id, document: slice[j].document, embedding: embeddings[j] });
     }
-    console.log("Indexing done.");
   }
-
-  _collection = collection;
-  return collection;
+  return chunks;
 }
 
-// ── 4. Build yearly stats ──────────────────────────────────────
+// ── 4. Yearly stats ────────────────────────────────────────────
 
 export function buildYearlyStats(rows: Row[]): YearlyStats[] {
-  const yearMap = new Map<
-    number,
-    { revenue: number; profit: number; orders: number; marginSum: number; count: number }
-  >();
+  const map = new Map<number, { revenue: number; profit: number; orders: number; marginSum: number; count: number }>();
   for (const r of rows) {
-    const cur = yearMap.get(r.year) ?? {
-      revenue: 0,
-      profit: 0,
-      orders: 0,
-      marginSum: 0,
-      count: 0,
-    };
-    yearMap.set(r.year, {
-      revenue: cur.revenue + r.revenue,
-      profit: cur.profit + r.profit,
-      orders: cur.orders + 1,
-      marginSum: cur.marginSum + r.profit_margin,
-      count: cur.count + 1,
-    });
+    const c = map.get(r.year) ?? { revenue: 0, profit: 0, orders: 0, marginSum: 0, count: 0 };
+    map.set(r.year, { revenue: c.revenue + r.revenue, profit: c.profit + r.profit, orders: c.orders + 1, marginSum: c.marginSum + r.profit_margin, count: c.count + 1 });
   }
-
-  const sorted = [...yearMap.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([year, v]) => ({
-      year,
-      revenue: v.revenue,
-      profit: v.profit,
-      orders: v.orders,
-      margin: v.marginSum / v.count,
-      rev_growth: null as number | null,
-      profit_growth: null as number | null,
-    }));
-
+  const sorted = [...map.entries()].sort((a, b) => a[0] - b[0]).map(([year, v]) => ({
+    year, revenue: v.revenue, profit: v.profit, orders: v.orders,
+    margin: v.marginSum / v.count, rev_growth: null as number | null, profit_growth: null as number | null,
+  }));
   for (let i = 1; i < sorted.length; i++) {
-    sorted[i].rev_growth =
-      ((sorted[i].revenue - sorted[i - 1].revenue) / sorted[i - 1].revenue) * 100;
-    sorted[i].profit_growth =
-      ((sorted[i].profit - sorted[i - 1].profit) / sorted[i - 1].profit) * 100;
+    sorted[i].rev_growth    = ((sorted[i].revenue - sorted[i-1].revenue) / sorted[i-1].revenue) * 100;
+    sorted[i].profit_growth = ((sorted[i].profit  - sorted[i-1].profit)  / sorted[i-1].profit)  * 100;
   }
-
   return sorted;
 }
 
-// ── 5. Build rich data summary string ─────────────────────────
+// ── 5. Data summary string ─────────────────────────────────────
 
-export function buildDataSummary(rows: Row[]): string {
+export function buildDataSummary(rows: Row[], businessName = "Your Business"): string {
+  if (rows.length === 0) return "No order data available for this business yet.";
+
   const yearly = buildYearlyStats(rows);
-
-  // Yearly string
   let yearlyStr = "";
   for (const r of yearly) {
-    const growth =
-      r.rev_growth !== null
-        ? ` (YoY: ${r.rev_growth >= 0 ? "+" : ""}${r.rev_growth.toFixed(1)}%)`
-        : " (base year)";
-    yearlyStr +=
-      `  ${r.year}: Revenue=${fmt(r.revenue).padStart(14)} EGP | ` +
-      `Profit=${fmt(r.profit).padStart(12)} EGP | ` +
-      `Margin=${fmtPct(r.margin)} | Orders=${fmt(r.orders)}${growth}\n`;
+    const g = r.rev_growth !== null ? ` (YoY: ${r.rev_growth >= 0 ? "+" : ""}${r.rev_growth.toFixed(1)}%)` : " (base year)";
+    yearlyStr += `  ${r.year}: Revenue=${fmt(r.revenue).padStart(14)} EGP | Profit=${fmt(r.profit).padStart(12)} EGP | Margin=${fmtPct(r.margin)} | Orders=${fmt(r.orders)}${g}\n`;
   }
 
-  // CAGR
   let cagrStr = "";
-  const yearsRange = yearly[yearly.length - 1].year - yearly[0].year;
-  if (yearsRange > 0) {
-    const cagr =
-      ((yearly[yearly.length - 1].revenue / yearly[0].revenue) **
-        (1 / yearsRange) -
-        1) *
-      100;
-    cagrStr = `  Revenue CAGR (${yearly[0].year}–${yearly[yearly.length - 1].year}): ${cagr.toFixed(1)}%\n`;
+  if (yearly.length > 1) {
+    const range = yearly[yearly.length - 1].year - yearly[0].year;
+    if (range > 0) {
+      const cagr = ((yearly[yearly.length - 1].revenue / yearly[0].revenue) ** (1 / range) - 1) * 100;
+      cagrStr = `  Revenue CAGR (${yearly[0].year}–${yearly[yearly.length - 1].year}): ${cagr.toFixed(1)}%\n`;
+    }
   }
 
-  // Last 12 months monthly revenue
   const monthRevMap = new Map<string, number>();
-  for (const r of rows) {
-    monthRevMap.set(r.month, (monthRevMap.get(r.month) ?? 0) + r.revenue);
-  }
-  const last12 = [...monthRevMap.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-12);
+  for (const r of rows) monthRevMap.set(r.month, (monthRevMap.get(r.month) ?? 0) + r.revenue);
+  const last12     = [...monthRevMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
   const monthlyStr = last12.map(([m, v]) => `  ${m}: ${fmt(v)} EGP`).join("\n");
 
-  // Product leaderboards
-  const prodRevMap = new Map<string, number>();
-  const prodProfMap = new Map<string, number>();
-  const prodMarginMap = new Map<string, { sum: number; count: number }>();
-  const prodUnitsMap = new Map<string, number>();
+  const pRev = new Map<string, { name: string; val: number }>();
+  const pPro = new Map<string, { name: string; val: number }>();
+  const pMar = new Map<string, { name: string; sum: number; count: number }>();
+  const pUnt = new Map<string, { name: string; val: number }>();
   for (const r of rows) {
-    prodRevMap.set(r.product_id, (prodRevMap.get(r.product_id) ?? 0) + r.revenue);
-    prodProfMap.set(r.product_id, (prodProfMap.get(r.product_id) ?? 0) + r.profit);
-    const m = prodMarginMap.get(r.product_id) ?? { sum: 0, count: 0 };
-    prodMarginMap.set(r.product_id, {
-      sum: m.sum + r.profit_margin,
-      count: m.count + 1,
-    });
-    prodUnitsMap.set(r.product_id, (prodUnitsMap.get(r.product_id) ?? 0) + r.quantity);
+    const { product_id: pid, product_name: name } = r;
+    pRev.set(pid, { name, val: (pRev.get(pid)?.val ?? 0) + r.revenue  });
+    pPro.set(pid, { name, val: (pPro.get(pid)?.val ?? 0) + r.profit   });
+    const m = pMar.get(pid) ?? { name, sum: 0, count: 0 };
+    pMar.set(pid, { name, sum: m.sum + r.profit_margin, count: m.count + 1 });
+    pUnt.set(pid, { name, val: (pUnt.get(pid)?.val ?? 0) + r.quantity });
   }
 
-  const top5Rev = [...prodRevMap.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const top5Prof = [...prodProfMap.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const top5Marg = [...prodMarginMap.entries()]
-    .sort((a, b) => b[1].sum / b[1].count - a[1].sum / a[1].count)
-    .slice(0, 5);
-  const top5Units = [...prodUnitsMap.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const worst3Marg = [...prodMarginMap.entries()]
-    .sort((a, b) => a[1].sum / a[1].count - b[1].sum / b[1].count)
-    .slice(0, 3);
+  const top5  = (m: Map<string, { name: string; val: number }>) =>
+    [...m.entries()].sort((a, b) => b[1].val - a[1].val).slice(0, 5);
+  const top5m = (m: Map<string, { name: string; sum: number; count: number }>, asc = false) =>
+    [...m.entries()].sort((a, b) => asc
+      ? (a[1].sum/a[1].count) - (b[1].sum/b[1].count)
+      : (b[1].sum/b[1].count) - (a[1].sum/a[1].count)
+    ).slice(0, asc ? 3 : 5);
 
-  // Seasonality
-  const monthAvgMap = new Map<number, { sum: number; count: number }>();
+  const MONTHS  = ["","January","February","March","April","May","June","July","August","September","October","November","December"];
+  const moAvg   = new Map<number, { sum: number; count: number }>();
   for (const r of rows) {
     const mo = r.order_date.getMonth() + 1;
-    const cur = monthAvgMap.get(mo) ?? { sum: 0, count: 0 };
-    monthAvgMap.set(mo, { sum: cur.sum + r.revenue, count: cur.count + 1 });
+    const c  = moAvg.get(mo) ?? { sum: 0, count: 0 };
+    moAvg.set(mo, { sum: c.sum + r.revenue, count: c.count + 1 });
   }
-  const MONTHS = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
-  const monthAvgs = [...monthAvgMap.entries()].map(([mo, v]) => ({
-    mo,
-    avg: v.sum / v.count,
-  }));
-  const bestMonth = MONTHS[monthAvgs.sort((a, b) => b.avg - a.avg)[0].mo];
-  const worstMonth = MONTHS[monthAvgs.sort((a, b) => a.avg - b.avg)[0].mo];
+  const moArr   = [...moAvg.entries()].map(([mo, v]) => ({ mo, avg: v.sum / v.count }));
+  const bestMo  = MONTHS[moArr.slice().sort((a, b) => b.avg - a.avg)[0]?.mo ?? 1];
+  const worstMo = MONTHS[moArr.slice().sort((a, b) => a.avg - b.avg)[0]?.mo ?? 1];
 
-  // Portfolio snapshot
   const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
-  const totalProfit = rows.reduce((s, r) => s + r.profit, 0);
-  const avgPrice = rows.reduce((s, r) => s + r.price, 0) / rows.length;
-  const avgMargin = rows.reduce((s, r) => s + r.profit_margin, 0) / rows.length;
-  const dates = rows.map((r) => r.order_date).sort((a, b) => +a - +b);
-  const fmtDate = (d: Date) =>
-    d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  const totalProfit  = rows.reduce((s, r) => s + r.profit, 0);
+  const avgPrice     = rows.reduce((s, r) => s + r.price, 0) / rows.length;
+  const avgMargin    = rows.reduce((s, r) => s + r.profit_margin, 0) / rows.length;
+  const dates        = rows.map((r) => r.order_date).sort((a, b) => +a - +b);
+  const fmtDate      = (d: Date) => d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 
   return `
 ════════════════════════════════════════════════
-FUSE BUSINESS INTELLIGENCE REPORT
+FUSE BUSINESS INTELLIGENCE — ${businessName.toUpperCase()}
 ════════════════════════════════════════════════
 
 ▸ PORTFOLIO SNAPSHOT
@@ -486,46 +342,60 @@ ${yearlyStr}${cagrStr}
 ${monthlyStr}
 
 ▸ SEASONALITY
-  Best month (avg): ${bestMonth} | Worst month (avg): ${worstMonth}
+  Best month (avg): ${bestMo} | Worst month (avg): ${worstMo}
 
 ▸ TOP 5 PRODUCTS — REVENUE
-${top5Rev.map(([p, v]) => `  ${p}: ${fmt(v)} EGP`).join("\n")}
+${top5(pRev).map(([, v]) => `  ${v.name}: ${fmt(v.val)} EGP`).join("\n")}
 
 ▸ TOP 5 PRODUCTS — PROFIT
-${top5Prof.map(([p, v]) => `  ${p}: ${fmt(v)} EGP`).join("\n")}
+${top5(pPro).map(([, v]) => `  ${v.name}: ${fmt(v.val)} EGP`).join("\n")}
 
 ▸ TOP 5 PRODUCTS — MARGIN
-${top5Marg.map(([p, v]) => `  ${p}: ${fmtPct(v.sum / v.count)}`).join("\n")}
+${top5m(pMar).map(([, v]) => `  ${v.name}: ${fmtPct(v.sum / v.count)}`).join("\n")}
 
 ▸ TOP 5 PRODUCTS — UNITS SOLD
-${top5Units.map(([p, v]) => `  ${p}: ${fmt(v)} units`).join("\n")}
+${top5(pUnt).map(([, v]) => `  ${v.name}: ${fmt(v.val)} units`).join("\n")}
 
 ▸ LOWEST MARGIN PRODUCTS (watch list)
-${worst3Marg.map(([p, v]) => `  ${p}: ${fmtPct(v.sum / v.count)}`).join("\n")}
+${top5m(pMar, true).map(([, v]) => `  ${v.name}: ${fmtPct(v.sum / v.count)}`).join("\n")}
 ════════════════════════════════════════════════
 `;
 }
 
-// ── 6. Top-level init (call once at startup) ───────────────────
+// ── 6. initFuse ────────────────────────────────────────────────
 
-export async function initFuse(filePath: string) {
-  if (_rows && _collection && _dataSummary) {
-    return { rows: _rows, collection: _collection, dataSummary: _dataSummary, yearlyStats: _yearlyStats! };
-  }
+async function _init(businessId: string): Promise<FuseState> {
+  const [biz] = await db
+    .select({ name: business.name })
+    .from(business)
+    .where(eq(business.id, businessId))
+    .limit(1);
 
-  const rows = loadData(filePath);
-  console.log(
-    `Loaded ${rows.length} rows | ${Math.min(...rows.map((r) => r.year))} → ${Math.max(...rows.map((r) => r.year))}`
-  );
-
-  const collection = await initCollection(rows);
-  const dataSummary = buildDataSummary(rows);
+  const rows        = await loadDataFromDB(businessId);
+  const chunks      = await buildVectorChunks(rows);
   const yearlyStats = buildYearlyStats(rows);
+  const dataSummary = buildDataSummary(rows, biz?.name ?? "Business");
 
-  _rows = rows;
-  _collection = collection;
-  _dataSummary = dataSummary;
-  _yearlyStats = yearlyStats;
+  console.log(`[Fuse] Ready — ${rows.length} rows, ${chunks.length} chunks for "${biz?.name}"`);
+  return { rows, chunks, dataSummary, yearlyStats };
+}
 
-  return { rows, collection, dataSummary, yearlyStats };
+export async function initFuse(businessId: string): Promise<FuseState> {
+  const cached = _cache.get(businessId);
+  if (cached) return cached;
+
+  const inflight = _inflight.get(businessId);
+  if (inflight) return inflight;
+
+  const promise = _init(businessId)
+    .then((state) => { _cache.set(businessId, state); _inflight.delete(businessId); return state; })
+    .catch((err)  => { _inflight.delete(businessId); throw err; });
+
+  _inflight.set(businessId, promise);
+  return promise;
+}
+
+export function bustFuseCache(businessId: string) {
+  _cache.delete(businessId);
+  _inflight.delete(businessId);
 }
