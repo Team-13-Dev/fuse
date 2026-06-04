@@ -138,6 +138,15 @@ export async function GET(req: NextRequest) {
         )),
     ])
 
+    // ── Low-stock product list ────────────────────────────────────────────
+    const lowStockRows = await db
+      .select({ name: product.name, stock: product.stock })
+      .from(product)
+      .where(and(eq(product.businessId, bid), lt(product.stock, 11)))
+      .orderBy(product.stock)
+      .limit(8)
+    const lowStockProducts = lowStockRows.map(r => ({ name: r.name, stock: Number(r.stock) }))
+
     // ── Top products by realized revenue ──────────────────────────────────
     const topRows = await db.execute(sql`
       SELECT p.id, p.name,
@@ -170,11 +179,11 @@ export async function GET(req: NextRequest) {
     const metrics = [
       {
         type:   "revenue" as const,
-        label:  "Revenue (week)",
-        value:  `EGP ${Number(revenueThisWeek).toLocaleString("en-EG", { maximumFractionDigits: 0 })}`,
+        label:  "Total revenue",
+        value:  `EGP ${Number(revenueAllTime).toLocaleString("en-EG", { maximumFractionDigits: 0 })}`,
         change: revDelta.change,
         up:     revDelta.up,
-        sub:    "vs last week",
+        sub:    "all time · gross sales",
       },
       {
         type:   "orders" as const,
@@ -218,6 +227,7 @@ export async function GET(req: NextRequest) {
       allTimeRevenue: Number(revenueAllTime),
       avgOrderValue,
       _allTimeRevenue: Number(revenueAllTime),
+      lowStockProducts,
     })
   } catch (err) {
     console.error("[dashboard/metrics] error:", err)
@@ -226,6 +236,7 @@ export async function GET(req: NextRequest) {
         error: "Failed to load metrics",
         metrics: [], revenue: [], orderMix: [], recent: [], topProducts: [],
         inventory: { outOfStock: 0, lowStock: 0 }, allTimeRevenue: 0, avgOrderValue: 0,
+        lowStockProducts: [],
       },
       { status: 500 },
     )
