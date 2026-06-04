@@ -21,7 +21,6 @@
 import { db } from "@/db";
 import { order, orderItem, product, business } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { pipeline } from "@xenova/transformers";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -73,19 +72,41 @@ let _embedder: ((texts: string[]) => Promise<Float32Array[]>) | null = null;
 
 async function getEmbedder() {
   if (!_embedder) {
-    const extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+
+    // Import only when actually needed
+    const transformers = await import("@xenova/transformers");
+
+    const { pipeline, env } = transformers;
+
+    env.allowLocalModels = false;
+    env.backends.onnx.wasm.numThreads = 1;
+
+    env.backends.onnx.wasm.wasmPaths =
+      "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+
+    const extractor = await pipeline(
+      "feature-extraction",
+      "Xenova/all-MiniLM-L6-v2"
+    );
+
     _embedder = async (texts: string[]) => {
       const out: Float32Array[] = [];
+
       for (const text of texts) {
-        const result = await extractor(text, { pooling: "mean", normalize: true });
-        out.push(new Float32Array(result.data as Float32Array));
+        const result = await extractor(text, {
+          pooling: "mean",
+          normalize: true,
+        });
+
+        out.push(Float32Array.from(result.data as Iterable<number>));
       }
+
       return out;
     };
   }
+
   return _embedder;
 }
-
 // ── Cosine similarity retrieval ────────────────────────────────
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
