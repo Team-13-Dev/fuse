@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { authClient } from "@/lib/auth-client"
-import { Bell, Search, Menu, X, ChevronRight, Store, Zap, BotMessageSquare } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { authClient, signOut } from "@/lib/auth-client"
+import { Menu, X, ChevronRight, Store, Zap, BotMessageSquare, LogOut, Trash2, AlertTriangle } from "lucide-react"
 import { Sidebar, NAV_SECTIONS } from "./Sidebar"
 import {
   SidebarStorePanel,
@@ -12,20 +13,236 @@ import {
   getAvatarGradient,
   getRoleBadge,
   type SidebarBusiness,
-  type SidebarUser,
 } from "./SidebarStorePanel"
 import JobsNotificationBar from "./JobsNotificationBar"
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type SidebarUser = {
+  id:    string
+  name:  string
+  email: string
+  role:  string
+}
+
+// ─── Delete account dialog (portal) ──────────────────────────────────────────
+
+function DeleteAccountDialog({
+  user,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  user:      SidebarUser
+  onConfirm: () => void
+  onCancel:  () => void
+  loading:   boolean
+}) {
+  const [typed, setTyped] = useState("")
+  const match = user.email
+  const confirmed = typed === match
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+        zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20,
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div style={{
+        background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 440,
+        boxShadow: "0 24px 48px rgba(0,0,0,0.25)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 10, background: "#fef2f2",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <Trash2 size={17} color="#ef4444" />
+          </div>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111", marginBottom: 2 }}>
+              Delete account permanently
+            </h3>
+            <p style={{ fontSize: 12, color: "#6b7280" }}>This action is irreversible</p>
+          </div>
+        </div>
+
+        <div style={{
+          background: "#fff7ed", border: "1px solid #fed7aa",
+          borderRadius: 8, padding: "10px 12px", marginBottom: 16,
+          display: "flex", gap: 8,
+        }}>
+          <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: 12, color: "#92400e" }}>
+            Your account, all stores, products, customers, orders, and every other record
+            will be permanently deleted. You cannot undo this.
+          </p>
+        </div>
+
+        <p style={{ fontSize: 13, color: "#374151", marginBottom: 8 }}>
+          Type your email <strong>{match}</strong> to confirm:
+        </p>
+        <input
+          value={typed}
+          onChange={e => setTyped(e.target.value)}
+          placeholder={match}
+          autoFocus
+          style={{
+            width: "100%", padding: "8px 12px", fontSize: 13,
+            border: `1px solid ${confirmed ? "#ef4444" : "#e5e7eb"}`,
+            borderRadius: 8, outline: "none", marginBottom: 16, color: "#111",
+            boxSizing: "border-box",
+          }}
+        />
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              padding: "8px 16px", borderRadius: 8, border: "1px solid #e5e7eb",
+              background: "transparent", color: "#6b7280", cursor: "pointer", fontSize: 13,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!confirmed || loading}
+            style={{
+              padding: "8px 16px", borderRadius: 8, border: "none",
+              background: confirmed ? "#ef4444" : "#fca5a5",
+              color: "#fff", cursor: confirmed ? "pointer" : "not-allowed",
+              fontSize: 13, fontWeight: 600, opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? "Deleting…" : "Delete my account"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// ─── Profile menu ─────────────────────────────────────────────────────────────
+
+function ProfileMenu({ user }: { user: SidebarUser }) {
+  const [open,          setOpen]          = useState(false)
+  const [showDelete,    setShowDelete]    = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    return () => document.removeEventListener("mousedown", onDown)
+  }, [])
+
+  async function handleDeleteAccount() {
+    setDeleteLoading(true)
+    try {
+      const res = await fetch("/api/authService/delete-account", { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? `Server error ${res.status}`)
+      }
+      window.location.href = "/login"
+    } catch (err) {
+      alert(`Could not delete account: ${err instanceof Error ? err.message : "Unknown error"}`)
+      setDeleteLoading(false)
+    }
+  }
+
+  const badge = getRoleBadge(user.role)
+
+  return (
+    <>
+      <div ref={ref} className="relative">
+        {/* Avatar button */}
+        <button
+          onClick={() => setOpen(v => !v)}
+          className={`w-8 h-8 rounded-full bg-linear-to-br ${getAvatarGradient(user.name)}
+            flex items-center justify-center text-white text-xs font-bold
+            ring-2 ring-white shadow-sm hover:ring-indigo-300 transition-all`}
+          title={user.name}
+        >
+          {getInitials(user.name)}
+        </button>
+
+        {/* Dropdown */}
+        {open && (
+          <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden z-50">
+            {/* User identity */}
+            <div className="px-4 py-3.5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl bg-linear-to-br ${getAvatarGradient(user.name)}
+                  flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm`}>
+                  {getInitials(user.name)}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{user.name}</p>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badge.cls}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{user.email}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="p-1.5 space-y-0.5">
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  signOut({ fetchOptions: { onSuccess: () => { window.location.href = "/login" } } })
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors text-left"
+              >
+                <LogOut size={14} className="text-gray-400 shrink-0" />
+                Sign out
+              </button>
+
+              <button
+                onClick={() => { setOpen(false); setShowDelete(true) }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-colors text-left"
+              >
+                <Trash2 size={14} className="text-red-400 shrink-0" />
+                Delete account
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showDelete && (
+        <DeleteAccountDialog
+          user={user}
+          loading={deleteLoading}
+          onConfirm={handleDeleteAccount}
+          onCancel={() => setShowDelete(false)}
+        />
+      )}
+    </>
+  )
+}
 
 // ─── Mobile drawer ────────────────────────────────────────────────────────────
+
 function MobileDrawer({
-  open, onClose, businesses, activeBusinessId, user, onSwitch,
+  open, onClose, businesses, activeBusinessId, onSwitch,
 }: {
   open:             boolean
   onClose:          () => void
   businesses:       SidebarBusiness[]
   activeBusinessId: string | null
-  user:             SidebarUser | null
   onSwitch:         (b: SidebarBusiness) => void
 }) {
   const activeBusiness = businesses.find(b => b.id === activeBusinessId) ?? null
@@ -35,7 +252,6 @@ function MobileDrawer({
     <>
       <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={onClose} />
       <aside className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col shadow-2xl">
-
         <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 shrink-0">
           <Link href="/dashboard" onClick={onClose} className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-linear-to-br from-indigo-600 to-violet-700 flex items-center justify-center shadow-sm">
@@ -48,11 +264,9 @@ function MobileDrawer({
           </button>
         </div>
 
-        {/* Same store+user panel as desktop */}
         <SidebarStorePanel
           businesses={businesses}
           active={activeBusiness}
-          user={user}
           onSwitch={(b) => { onSwitch(b); onClose() }}
         />
 
@@ -92,6 +306,7 @@ function MobileDrawer({
 }
 
 // ─── Top header ───────────────────────────────────────────────────────────────
+
 function TopHeader({
   user, activeBusiness, mobileMenuOpen, onMobileMenuToggle,
 }: {
@@ -125,29 +340,9 @@ function TopHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="relative hidden sm:block">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            placeholder="Search…"
-            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50
-              focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white
-              w-44 transition-all focus:w-56"
-          />
-        </div>
-        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <Bell size={16} className="text-gray-500" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-600 rounded-full" />
-        </button>
+      <div className="flex items-center shrink-0">
         {user ? (
-          <div
-            title={`${user.name} · ${getRoleBadge(user.role).label}`}
-            className={`w-8 h-8 rounded-full bg-linear-to-br ${getAvatarGradient(user.name)}
-              flex items-center justify-center text-white text-xs font-bold
-              cursor-pointer ring-2 ring-white shadow-sm`}
-          >
-            {getInitials(user.name)}
-          </div>
+          <ProfileMenu user={user} />
         ) : (
           <div className="w-8 h-8 rounded-full bg-gray-100 animate-pulse" />
         )}
@@ -157,8 +352,10 @@ function TopHeader({
 }
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { data: session } = authClient.useSession()
+  const router = useRouter()
 
   const [businesses,       setBusinesses]       = useState<SidebarBusiness[]>([])
   const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null)
@@ -186,10 +383,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ businessId: b.id }),
     })
-    window.location.reload()
+    router.refresh()
   }
 
-  // Build typed objects — safe to be null while loading, each child handles its own skeleton
   const user: SidebarUser | null = session?.user
     ? { id: session.user.id, name: session.user.name, email: session.user.email, role: userRole }
     : null
@@ -206,7 +402,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <Sidebar
         businesses={businessesWithRole}
         activeBusinessId={activeBusinessId}
-        user={user}
         onSwitch={handleSwitch}
         collapsed={collapsed}
         onToggle={() => setCollapsed(v => !v)}
@@ -216,12 +411,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         onClose={() => setMobileOpen(false)}
         businesses={businessesWithRole}
         activeBusinessId={activeBusinessId}
-        user={user}
         onSwitch={handleSwitch}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        <Link href={"/chatbot"} className="rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center z-20">
-          <BotMessageSquare className="text-xl"/>
+        <Link
+          href="/chatbot"
+          className="rounded-full text-white bg-violet-600 hover:bg-violet-500 duration-200 absolute bottom-6 right-12 w-12 h-12 grid place-content-center z-20"
+        >
+          <BotMessageSquare className="text-xl" />
         </Link>
         <TopHeader
           user={user}
@@ -229,9 +426,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           mobileMenuOpen={mobileOpen}
           onMobileMenuToggle={() => setMobileOpen(v => !v)}
         />
-        {/* Full-width banner under the header — not a flex sibling of the sidebar */}
         <JobsNotificationBar />
-        <main className="flex-1 overflow-y-auto">
+        <main key={activeBusinessId ?? "loading"} className="flex-1 overflow-y-auto">
           {children}
         </main>
       </div>

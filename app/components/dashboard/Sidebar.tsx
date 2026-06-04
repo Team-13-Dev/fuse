@@ -13,7 +13,6 @@ import {
   getInitials,
   getAvatarGradient,
   type SidebarBusiness,
-  type SidebarUser,
 } from "./SidebarStorePanel"
 
 // ─── Nav config (exported so MobileDrawer + TopHeader can reuse it) ───────────
@@ -131,14 +130,12 @@ function NavItem({
 export function Sidebar({
   businesses,
   activeBusinessId,
-  user,
   onSwitch,
   collapsed,
   onToggle,
 }: {
   businesses:       SidebarBusiness[]
   activeBusinessId: string | null
-  user:             SidebarUser | null
   onSwitch:         (b: SidebarBusiness) => void
   collapsed:        boolean
   onToggle:         () => void
@@ -199,11 +196,9 @@ export function Sidebar({
           )}
         </div>
       ) : (
-        // Expanded: full store panel + user card
         <SidebarStorePanel
           businesses={businesses}
           active={activeBusiness}
-          user={user}
           onSwitch={onSwitch}
         />
       )}

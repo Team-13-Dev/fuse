@@ -40,6 +40,18 @@
     
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
+        // Clear business context on sign-out
+        if (ctx.path.startsWith("/sign-out")) {
+          ctx.setCookie("business_ctx", "", {
+            httpOnly: true,
+            secure:   process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge:   0,
+            path:     "/",
+          });
+          return;
+        }
+
         if (!ctx.path.startsWith("/sign-in/email")) {
           return;
         }

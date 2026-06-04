@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     },
     {
       headers: {
-        "Cache-Control": "private, max-age=60", // cache for 60s
+        "Cache-Control": "private, no-cache",
       },
     }
   );
