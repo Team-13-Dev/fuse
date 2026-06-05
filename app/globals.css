@@ -17,7 +17,7 @@
   }
 
   body {
-    @apply font-['Space_Grotesk',sans-serif];
+    font-family: var(--font-body), sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -25,11 +25,13 @@
   }
 
   .font-drama {
-    @apply font-['DM_Serif_Display',serif] italic;
+    font-family: var(--font-display), sans-serif;
+    font-style: italic;
+    font-weight: 700;
   }
 
   .font-data {
-    @apply font-['Space_Mono',monospace];
+    font-family: var(--font-mono), monospace;
   }
 }
 
