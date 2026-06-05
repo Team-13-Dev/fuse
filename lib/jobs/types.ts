@@ -54,3 +54,41 @@ export interface SegmentsResponse {
   segments:          ProductSegment[]
   clusters:          ProductClusterSummary[]
 }
+
+// ─── Customer segmentation ────────────────────────────────────────────────────
+
+export interface CustomerClusterSummary {
+  id:              string
+  cluster:         number
+  segmentName:     string
+  numCustomers:    number
+  recencyMedian:   number       // days since last order
+  frequencyMedian: number       // unique orders
+  monetaryMedian:  number       // total spend median (EGP)
+  monetarySum:     number       // total revenue from this segment
+  aovMedian:       number | null
+  tenureMedian:    number | null // days between first and last order
+  revenuePct:      number       // % of total revenue
+  customerPct:     number       // % of total customers
+  churnRisk:       string       // "LOW" | "MEDIUM" | "HIGH" | "VERY HIGH" | "CRITICAL"
+  priority:        string
+  channel:         string
+  offer:           string
+  upsell:          string
+  campaignFreq:    string
+  topCustomers:    Array<{
+    customer_id: string
+    name:        string | null
+    monetary:    number
+    frequency:   number
+    recency:     number
+  }>
+}
+
+export interface CustomerSegmentsResponse {
+  hasResults:         boolean
+  customerCount:      number
+  minCustomersNeeded: number
+  lastJobAt:          string | null
+  clusters:           CustomerClusterSummary[]
+}

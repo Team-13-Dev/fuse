@@ -80,7 +80,8 @@ export const business = pgTable("business", {
   tenantSlug: varchar("tenant_slug", { length: 100 }).notNull().unique(),
   industry:   varchar("industry", { length: 100 }),
   location:   text("location"),
-  lastProductSegmentAt: timestamp("last_product_segment_at"),
+  lastProductSegmentAt:  timestamp("last_product_segment_at"),
+  lastCustomerSegmentAt: timestamp("last_customer_segment_at"),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -333,6 +334,32 @@ export const productSegment = pgTable("product_segment", {
 }))
  
  
+// ── Customer segmentation ────────────────────────────────────────────────────
+export const customerClusterSummary = pgTable("customer_cluster_summary", {
+  id:              uuid("id").defaultRandom().primaryKey(),
+  businessId:      uuid("business_id").notNull().references(() => business.id, { onDelete: "cascade" }),
+  jobId:           uuid("job_id").notNull().references(() => analysisJob.id, { onDelete: "cascade" }),
+  cluster:         integer("cluster").notNull(),
+  segmentName:     text("segment_name").notNull(),
+  numCustomers:    integer("num_customers").notNull(),
+  recencyMedian:   numeric("recency_median"),
+  frequencyMedian: numeric("frequency_median"),
+  monetaryMedian:  numeric("monetary_median"),
+  monetarySum:     numeric("monetary_sum"),
+  aovMedian:       numeric("aov_median"),
+  tenureMedian:    numeric("tenure_median"),
+  revenuePct:      numeric("revenue_pct"),
+  customerPct:     numeric("customer_pct"),
+  churnRisk:       text("churn_risk"),
+  priority:        text("priority"),
+  channel:         text("channel"),
+  offer:           text("offer"),
+  upsell:          text("upsell"),
+  campaignFreq:    text("campaign_freq"),
+  topCustomers:    jsonb("top_customers"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+})
+
 // ── Cluster-level rollup stats ──────────────────────────────────────────────
 export const productClusterSummary = pgTable("product_cluster_summary", {
   id:               uuid("id").defaultRandom().primaryKey(),
