@@ -68,28 +68,28 @@ const _inflight: Map<string, Promise<FuseState>>  = new Map();
 
 // ── Embedder singleton ─────────────────────────────────────────
 
-let _embedder: ((texts: string[]) => Promise<Float32Array[]>) | null = null;
+// Use globalThis to persist the embedder across Next.js HMR reloads
+const globalForTransformers = globalThis as unknown as {
+  _embedder: ((texts: string[]) => Promise<Float32Array[]>) | null;
+};
 
 async function getEmbedder() {
-  if (!_embedder) {
-
-    // Import only when actually needed
-    const transformers = await import("@xenova/transformers");
-
-    const { pipeline, env } = transformers;
+  if (!globalForTransformers._embedder) {
+    const { pipeline, env } = await import("@xenova/transformers");
 
     env.allowLocalModels = false;
+    
+    // Force WASM execution to bypass the need for native Node binaries
+    // and keep the serverless function under Vercel's 50MB limit.
     env.backends.onnx.wasm.numThreads = 1;
-
-    env.backends.onnx.wasm.wasmPaths =
-      "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+    env.backends.onnx.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
     const extractor = await pipeline(
       "feature-extraction",
       "Xenova/all-MiniLM-L6-v2"
     );
 
-    _embedder = async (texts: string[]) => {
+    globalForTransformers._embedder = async (texts: string[]) => {
       const out: Float32Array[] = [];
 
       for (const text of texts) {
@@ -105,8 +105,9 @@ async function getEmbedder() {
     };
   }
 
-  return _embedder;
+  return globalForTransformers._embedder;
 }
+
 // ── Cosine similarity retrieval ────────────────────────────────
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
@@ -120,8 +121,8 @@ function cosineSim(a: Float32Array, b: Float32Array): number {
 }
 
 export async function queryChunks(
-  query:   string,
-  chunks:  VectorChunk[],
+  query:  string,
+  chunks: VectorChunk[],
   topK = 12
 ): Promise<string[]> {
   const embedder   = await getEmbedder();
@@ -165,8 +166,8 @@ async function loadDataFromDB(businessId: string): Promise<Row[]> {
     );
 
   return raw
-    .filter((r : any) => r.order_date && r.product_id && r.unit_price !== null)
-    .map((r : any) => {
+    .filter((r: any) => r.order_date && r.product_id && r.unit_price !== null)
+    .map((r: any) => {
       const price    = Number(r.unit_price    ?? 0);
       const qty      = r.quantity             ?? 1;
       const discount = Number(r.item_discount ?? 0);
