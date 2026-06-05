@@ -67,29 +67,29 @@ const _cache:    Map<string, FuseState>           = new Map();
 const _inflight: Map<string, Promise<FuseState>>  = new Map();
 
 // ── Embedder singleton ─────────────────────────────────────────
+// 1. Define the type clearly at the top
+type EmbedderFn = (texts: string[]) => Promise<Float32Array[]>;
 
-// Use globalThis to persist the embedder across Next.js HMR reloads
 const globalForTransformers = globalThis as unknown as {
-  _embedder: ((texts: string[]) => Promise<Float32Array[]>) | null;
+  _embedder: EmbedderFn | null;
 };
 
-async function getEmbedder() {
+async function getEmbedder(): Promise<EmbedderFn> {
   if (!globalForTransformers._embedder) {
     const { pipeline, env } = await import("@xenova/transformers");
 
     env.allowLocalModels = false;
-    
-    // Force WASM execution to bypass the need for native Node binaries
-    // and keep the serverless function under Vercel's 50MB limit.
     env.backends.onnx.wasm.numThreads = 1;
-    env.backends.onnx.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
+    // Use quantized model to drastically reduce memory usage
     const extractor = await pipeline(
       "feature-extraction",
-      "Xenova/all-MiniLM-L6-v2"
+      "Xenova/all-MiniLM-L6-v2",
+      { quantized: true }
     );
 
-    globalForTransformers._embedder = async (texts: string[]) => {
+    // 2. Explicitly define the return type here to satisfy the compiler
+    globalForTransformers._embedder = async (texts: string[]): Promise<Float32Array[]> => {
       const out: Float32Array[] = [];
 
       for (const text of texts) {
@@ -97,15 +97,16 @@ async function getEmbedder() {
           pooling: "mean",
           normalize: true,
         });
-
-        out.push(Float32Array.from(result.data as Iterable<number>));
+        
+        // Ensure result.data is treated as the correct type
+        out.push(new Float32Array(result.data as Float32Array));
       }
 
       return out;
     };
   }
 
-  return globalForTransformers._embedder;
+  return globalForTransformers._embedder!;
 }
 
 // ── Cosine similarity retrieval ────────────────────────────────

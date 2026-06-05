@@ -6,18 +6,40 @@
  */
 
 import OpenAI from "openai";
-import { queryChunks, fmt, fmtPct,  type FuseState } from "./fuseData";
+import { queryChunks, fmt, fmtPct, type FuseState } from "./fuseData";
 
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-function getGroqClient() {
-  const apiKey = process.env.GROQ_CHAT_API_KEY;
-  if (!apiKey) throw new Error("GROQ_API_KEY env var is not set");
-  return new OpenAI({ baseURL: "https://api.groq.com/openai/v1", apiKey });
+// ── Client Singleton ──────────────────────────────────────────
+
+// Persist the Groq/OpenAI client across Next.js HMR and Serverless warm starts
+const globalForGroq = globalThis as unknown as {
+  _groqClient?: OpenAI;
+};
+
+function getGroqClient(): OpenAI {
+  if (!globalForGroq._groqClient) {
+    const apiKey = process.env.GROQ_CHAT_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error(
+        "Missing API Key: Ensure GROQ_CHAT_API_KEY is set in Vercel Environment Variables."
+      );
+    }
+    
+    globalForGroq._groqClient = new OpenAI({ 
+      baseURL: "https://api.groq.com/openai/v1", 
+      apiKey 
+    });
+  }
+  
+  return globalForGroq._groqClient;
 }
+
+// ── System Prompt ──────────────────────────────────────────────
 
 export function buildSystemPrompt(dataSummary: string): string {
   return `
@@ -68,6 +90,8 @@ Only deflect if the question has ZERO business connection.
 `;
 }
 
+// ── Retrieval ──────────────────────────────────────────────────
+
 async function getRelevantContext(
   query:       string,
   state:       FuseState,
@@ -87,6 +111,8 @@ async function getRelevantContext(
 
   return `[Yearly Anchors]\n${yearlyAnchor}\n\n[Retrieved Context]\n${retrieved.join("\n")}`;
 }
+
+// ── Main Chat Function ─────────────────────────────────────────
 
 export async function chatWithFuse({
   userMessage,
