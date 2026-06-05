@@ -76,39 +76,40 @@ const globalForTransformers = globalThis as unknown as {
 
 async function getEmbedder(): Promise<EmbedderFn> {
   if (!globalForTransformers._embedder) {
+    // 1. Import the library and the environment configuration
     const { pipeline, env } = await import("@xenova/transformers");
 
+    // 2. CRITICAL: Force the library to use the Web-based WASM backend.
+    // This prevents the search for .so files on the Linux host.
     env.allowLocalModels = false;
-    env.backends.onnx.wasm.numThreads = 1;
+    env.allowRemoteModels = true;
+    env.backends.onnx.wasm.proxy = false; 
+    
+    // Explicitly point to the CDN for the WASM files
+    env.backends.onnx.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
-    // Use quantized model to drastically reduce memory usage
+    // 3. Initialize the pipeline with the quantized model
     const extractor = await pipeline(
       "feature-extraction",
       "Xenova/all-MiniLM-L6-v2",
       { quantized: true }
     );
 
-    // 2. Explicitly define the return type here to satisfy the compiler
     globalForTransformers._embedder = async (texts: string[]): Promise<Float32Array[]> => {
       const out: Float32Array[] = [];
-
       for (const text of texts) {
         const result = await extractor(text, {
           pooling: "mean",
           normalize: true,
         });
-        
-        // Ensure result.data is treated as the correct type
         out.push(new Float32Array(result.data as Float32Array));
       }
-
       return out;
     };
   }
 
   return globalForTransformers._embedder!;
 }
-
 // ── Cosine similarity retrieval ────────────────────────────────
 
 function cosineSim(a: Float32Array, b: Float32Array): number {
