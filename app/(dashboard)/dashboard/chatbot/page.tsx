@@ -47,13 +47,13 @@ export default function FuseChat() {
           history: messages, 
         }),
       });
-
+      
       if (!res.ok) {
         throw new Error("Failed to fetch response");
       }
 
       const data = await res.json();
-      
+      console.log(data);
       if (data.history) {
         setMessages(data.history);
       }

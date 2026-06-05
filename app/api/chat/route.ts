@@ -29,9 +29,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ reply, history: updatedHistory });
 
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[FUSE /chat]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (err: any) {
+    console.error(err);
+
+    return NextResponse.json(
+      {
+        message: err.message,
+        stack: err.stack,
+      },
+      { status: 500 }
+    );
   }
 }
