@@ -56,7 +56,7 @@ export default function FuseChat() {
 
   console.log(businessId);
   try {
-    const res = await fetch("http://localhost:8000/api/v1/chat", {
+    const res = await fetch("https://web-production-3f0f2.up.railway.app/api/v1/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
