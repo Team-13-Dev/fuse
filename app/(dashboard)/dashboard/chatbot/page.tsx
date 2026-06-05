@@ -12,6 +12,7 @@ export default function FuseChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [businessId, setBusinessId] = useState();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to the bottom when messages update
@@ -20,53 +21,70 @@ export default function FuseChat() {
   };
 
   useEffect(() => {
+    fetch("/api/me/context") // Replace with the actual path to your route
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.activeBusinessId) {
+          setBusinessId(data.activeBusinessId);
+        }
+      })
+      .catch((err) => console.error("Failed to load business context", err));
+  }, [])
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  // Guard clause: Don't send if we haven't loaded the businessId yet
+  if (!input.trim() || isLoading || !businessId) {
+    if (!businessId) console.warn("Waiting for business context...");
+    return;
+  }
 
-    const userMessage = input.trim();
-    setInput("");
+  const userMessage = input.trim();
+  setInput("");
+  
+  const nextMessages: ChatMessage[] = [
+    ...messages,
+    { role: "user", content: userMessage },
+  ];
+  setMessages(nextMessages);
+  setIsLoading(true);
+
+  console.log(businessId);
+  try {
+    const res = await fetch("http://localhost:8000/api/v1/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        businessId: businessId, // Now safely available from state
+        message: userMessage,
+        history: messages, // Send existing history so LLM maintains context
+      }),
+    });
     
-    // Optimistically update the UI
-    const optimisticHistory: ChatMessage[] = [
-      ...messages,
-      { role: "user", content: userMessage },
-    ];
-    setMessages(optimisticHistory);
-    setIsLoading(true);
+    if (!res.ok) throw new Error("Server error");
 
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userMessage,
-          history: messages, 
-        }),
-      });
-      
-      if (!res.ok) {
-        throw new Error("Failed to fetch response");
-      }
-
-      const data = await res.json();
-      console.log(data);
-      if (data.history) {
-        setMessages(data.history);
-      }
-    } catch (error) {
-      console.error("Chat error:", error);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Something went wrong. Please try again." },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const data = await res.json();  
+    
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: data.reply },
+    ]);
+    
+  } catch (error) {
+    console.error("Chat error:", error);
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "Something went wrong. Please try again." },
+    ]);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="w-full h-full grid place-content-center">
