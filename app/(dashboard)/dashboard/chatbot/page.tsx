@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Sparkles, User } from "lucide-react";
 
 type ChatMessage = {
@@ -15,13 +15,12 @@ export default function FuseChat() {
   const [businessId, setBusinessId] = useState();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the bottom when messages update
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    fetch("/api/me/context") // Replace with the actual path to your route
+    fetch("/api/me/context")
       .then((res) => res.json())
       .then((data) => {
         if (data.activeBusinessId) {

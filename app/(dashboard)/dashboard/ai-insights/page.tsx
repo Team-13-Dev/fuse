@@ -1,12 +1,12 @@
-import React from 'react';
 import { 
-  ChevronDown, Bell, Search, Sparkles, 
-  TrendingUp, AlertCircle, UserCheck, MessageSquare, 
-  ArrowUpRight, ArrowDownRight, Clock, Zap, Target,
-  SlidersHorizontal, Brain, RefreshCw
+  TrendingUp, AlertCircle, UserCheck,
+  ArrowUpRight, Clock, Zap, Target,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import Image from 'next/image';
 import AILogo from "@/public/ai.png"
+import Link from 'next/link';
 
 export default function CRMAIInsights() {
   return (
@@ -23,13 +23,16 @@ export default function CRMAIInsights() {
                 Insights
             </span>
           </div>
+          <div className='w-1 h-4 bg-gray-200 rounded-lg'>
+
+          </div>
+          <Link href={"/dashboard/ai-insights/sales-forecast"} className='flex items-center gap-2'>
+            <Sparkles size={18}/>
+            <button className='hover:text-violet-500 duration-300  text-md cursor-pointer'>Sales Forecast</button>
+          </Link>
         </div>
 
         <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-4 text-gray-500">
-            <Search className="w-5 h-5 cursor-pointer hover:text-gray-900" />
-            <Bell className="w-5 h-5 cursor-pointer hover:text-gray-900" />
-          </div>
           <div className="w-px h-6 bg-gray-300"></div>
           <button className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center">
             <RefreshCw className="w-4 h-4 mr-2" />
@@ -58,10 +61,6 @@ export default function CRMAIInsights() {
                 <p className="text-sm text-gray-500 mt-1">
                   Analyzing 12,450 interactions across your pipeline this week.
                 </p>
-              </div>
-              <div className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-4 py-2 rounded-full text-sm font-medium flex items-center">
-                <Brain className="w-4 h-4 mr-2" />
-                Model Confidence: 94%
               </div>
             </div>
 
@@ -166,78 +165,6 @@ export default function CRMAIInsights() {
 
           </div>
         </main>
-
-        {/* RIGHT SIDEBAR (AI Controls & Filters) */}
-        <aside className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-y-auto">
-          <div className="p-6 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900 flex items-center">
-              <SlidersHorizontal className="w-4 h-4 mr-2 text-gray-500" />
-              Insight Parameters
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">Tune how the AI evaluates your CRM data.</p>
-          </div>
-
-          <div className="p-6 flex-1">
-            <h3 className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-5">Active Models</h3>
-            
-            {/* Toggles */}
-            <div className="space-y-4 mb-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-semibold text-gray-700 block">Lead Scoring</span>
-                  <span className="text-xs text-gray-500">Predicts conversion likelihood</span>
-                </div>
-                <div className="w-10 h-5 bg-indigo-600 rounded-full relative cursor-pointer">
-                  <div className="w-3.5 h-3.5 bg-white rounded-full absolute right-1 top-0.5 shadow-sm"></div>
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-semibold text-gray-700 block">Churn Prediction</span>
-                  <span className="text-xs text-gray-500">Flags at-risk accounts</span>
-                </div>
-                <div className="w-10 h-5 bg-indigo-600 rounded-full relative cursor-pointer">
-                  <div className="w-3.5 h-3.5 bg-white rounded-full absolute right-1 top-0.5 shadow-sm"></div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-semibold text-gray-700 block">Sentiment Analysis</span>
-                  <span className="text-xs text-gray-500">Scans emails & call transcripts</span>
-                </div>
-                <div className="w-10 h-5 bg-gray-200 rounded-full relative cursor-pointer">
-                  <div className="w-3.5 h-3.5 bg-white rounded-full absolute left-1 top-0.5 shadow-sm"></div>
-                </div>
-              </div>
-            </div>
-
-            <h3 className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-5">Sensitivity</h3>
-            
-            {/* Slider Mockup */}
-            <div className="mb-6">
-              <div className="flex justify-between text-xs text-gray-600 mb-2">
-                <span>Low Alert</span>
-                <span className="font-bold text-indigo-600">Balanced</span>
-                <span>High Alert</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full relative">
-                <div className="absolute left-0 top-0 h-full w-1/2 bg-indigo-500 rounded-l-full"></div>
-                <div className="absolute left-1/2 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full shadow-sm cursor-pointer"></div>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-8">
-              <h4 className="text-sm font-bold text-blue-900 mb-1">Data Freshness</h4>
-              <p className="text-xs text-blue-700 mb-3">Your models were last trained 4 hours ago. Keeping data synced improves insight accuracy.</p>
-              <button className="text-xs font-semibold bg-white text-blue-600 px-3 py-2 rounded-md border border-blue-200 hover:bg-blue-50 w-full transition-colors">
-                View Sync Logs
-              </button>
-            </div>
-          </div>
-        </aside>
-
       </div>
     </div>
   );

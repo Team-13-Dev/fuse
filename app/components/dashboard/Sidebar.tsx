@@ -46,6 +46,7 @@ export const NAV_SECTIONS = [
     items: [
       { label: "Campaigns",    href: "/dashboard/campaigns",    icon: Megaphone,    soon: true    },
       { label: "AI Insights",  href: "/dashboard/ai-insights",  icon: Sparkles,     soon: false    },
+      { label: "Chatbot",  href: "/dashboard/chatbot",  icon: BotMessageSquare,     soon: false    },
       { label: "Integrations", href: "/dashboard/integrations", icon: Zap,          soon: true    },
     ],
   },
