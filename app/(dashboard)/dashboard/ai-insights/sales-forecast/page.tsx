@@ -99,7 +99,7 @@ export default function SalesForecastHub() {
 
       // 2. POST to Railway and read the SSE stream
       const forecastRes = await fetch(
-        "https://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations",
+        "http://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -255,7 +255,7 @@ export default function SalesForecastHub() {
             {/* ── ERROR ── */}
             {showError && (
               <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center">
-                <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 mr-2 shrink-0" />
                 {error}
               </div>
             )}

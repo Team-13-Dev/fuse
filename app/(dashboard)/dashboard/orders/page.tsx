@@ -86,9 +86,6 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
 }
 
 function OrderRow({ order, onClick }: { order: Order; onClick: () => void }) {
-  // const initials = order.customerName
-  //   .split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase()
-
   return (
     <tr onClick={onClick} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors cursor-pointer group">
       <td className="py-3.5 px-4">
@@ -99,7 +96,7 @@ function OrderRow({ order, onClick }: { order: Order; onClick: () => void }) {
       <td className="py-3.5 px-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 text-[11px] font-medium text-indigo-600">
-            {/* {initials} */}
+            {order.customerName?.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{order.customerName}</p>
@@ -137,6 +134,7 @@ export default function OrdersPage() {
   const [editOrder,     setEditOrder]     = useState<Order | null>(null)
   const [deleteOrder,   setDeleteOrder]   = useState<Order | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
 
   const [page, setPage] = useState(1)
   const [limit] = useState(20)
@@ -148,7 +146,6 @@ export default function OrdersPage() {
     hasNext: false,
     hasPrev: false,
   })
-
 
   const searchRef = useRef<HTMLInputElement>(null)
   const { toasts, push, dismiss } = useToast()
@@ -175,11 +172,9 @@ export default function OrdersPage() {
     setLoading(true)
     try {
       const qs = new URLSearchParams()
-
       if (dSearch)      qs.set("search", dSearch)
       if (statusFilter) qs.set("status", statusFilter)
       if (dateFilter)   qs.set("date", dateFilter)
-
       qs.set("page", String(page))
       qs.set("limit", String(limit))
 
@@ -188,7 +183,6 @@ export default function OrdersPage() {
 
       const data = await res.json()
 
-      // ✅ NEW SHAPE
       if (data?.data && Array.isArray(data.data)) {
         setOrders(data.data)
         setPagination(data.pagination)
@@ -196,7 +190,6 @@ export default function OrdersPage() {
         console.error("Unexpected API response:", data)
         setOrders([])
       }
-
     } catch {
       push("Failed to load orders", "error")
     } finally {
@@ -206,70 +199,58 @@ export default function OrdersPage() {
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  useEffect(() => {
-    setPage(1)
-  }, [dSearch, statusFilter, dateFilter])
+  useEffect(() => { setPage(1) }, [dSearch, statusFilter, dateFilter])
 
-  // ── Metrics ──────────────────────────────────────────────────────────────────
- // ── Metrics ──────────────────────────────────────────────────────────────────
-const isOrdersArray = Array.isArray(orders);
+  // ── Metrics ───────────────────────────────────────────────────────────────────
+  const isOrdersArray = Array.isArray(orders)
 
-const metrics = isOrdersArray 
-  ? orders.reduce((acc, o) => {
-      const val = Number(o.total || 0);
-      
-      // 1. Always track global totals
-      acc.totalCount += 1;
-      acc.allTotalSum += val;
+  const metrics = isOrdersArray
+    ? orders.reduce((acc, o) => {
+        const val = Number(o.total || 0)
+        acc.totalCount += 1
+        acc.allTotalSum += val
+        if (o.status === "pending") acc.pendingCount += 1
+        if (o.status !== "cancelled" && o.status !== "refunded") {
+          acc.revenue += val
+          acc.validOrderCount += 1
+        }
+        return acc
+      }, { revenue: 0, validOrderCount: 0, pendingCount: 0, totalCount: 0, allTotalSum: 0 })
+    : { revenue: 0, validOrderCount: 0, pendingCount: 0, totalCount: 0, allTotalSum: 0 }
 
-      // 2. Track specific statuses
-      if (o.status === "pending") {
-        acc.pendingCount += 1;
-      }
-
-      // 3. Revenue logic (Excluding failed orders)
-      if (o.status !== "cancelled" && o.status !== "refunded") {
-        acc.revenue += val;
-        acc.validOrderCount += 1;
-      }
-
-      return acc;
-    }, { 
-      revenue: 0, 
-      validOrderCount: 0, 
-      pendingCount: 0, 
-      totalCount: 0, 
-      allTotalSum: 0 
-    })
-  : { revenue: 0, validOrderCount: 0, pendingCount: 0, totalCount: 0, allTotalSum: 0 };
-
-  // ── Derived Values ──────────────────────────────────────────────────────────
-  const total = pagination.total;
-  const totalRev     = metrics.revenue;
-  const pending      = metrics.pendingCount;
-
-  const avgOrder = metrics.totalCount > 0
-    ? `EGP ${(metrics.allTotalSum / metrics.totalCount).toLocaleString("en-EG", { 
-        maximumFractionDigits: 0 
-      })}`
+  const total     = pagination.total
+  const totalRev  = metrics.revenue
+  const pending   = metrics.pendingCount
+  const avgOrder  = metrics.totalCount > 0
+    ? `EGP ${(metrics.allTotalSum / metrics.totalCount).toLocaleString("en-EG", { maximumFractionDigits: 0 })}`
     : "—"
-
   const isFiltered = !!dSearch || !!statusFilter || !!dateFilter
 
   function handlePill(key: OrderStatus) {
-    if (activePill === key) {
-      setActivePill("")
-      setStatusFilter("")
-    } else {
-      setActivePill(key)
-      setStatusFilter(key)
+    if (activePill === key) { setActivePill(""); setStatusFilter("") }
+    else { setActivePill(key); setStatusFilter(key) }
+  }
+
+  // ── OPEN DETAIL (fetch full order with items) ─────────────────────────────────
+  async function handleOpenDetail(id: string) {
+    setDetailLoading(true)
+    try {
+      const res = await fetch(`/api/orders/${id}`)
+      if (!res.ok) { push("Failed to load order details", "error"); return }
+      const full: Order = await res.json()
+      setDetailOrder(full)
+    } catch {
+      push("Failed to load order details", "error")
+    } finally {
+      setDetailLoading(false)
     }
   }
 
   // ── CREATE ───────────────────────────────────────────────────────────────────
   async function handleCreate(data: OrderFormData) {
     const res = await fetch("/api/orders", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
     if (!res.ok) {
@@ -277,17 +258,20 @@ const metrics = isOrdersArray
       throw new Error(err.error ?? "Failed to create order")
     }
     const created: Order = await res.json()
-    console.log(created);
     setOrders(prev => [created, ...prev])
-    push(`Order ${created.orderNumber} created`, "success")
+    // Use id as fallback since the API may not return orderNumber
+    push(`Order ${created.orderNumber ?? created.id} created`, "success")
     setAddOpen(false)
   }
 
   // ── UPDATE ───────────────────────────────────────────────────────────────────
+  // Sends a PATCH to /api/orders/[id] with the full updated form payload.
+  // The [id]/route.ts must expose a PATCH handler (see route file).
   async function handleUpdate(data: OrderFormData) {
     if (!editOrder) return
     const res = await fetch(`/api/orders/${editOrder.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
     if (!res.ok) {
@@ -296,24 +280,20 @@ const metrics = isOrdersArray
     }
     const updated: Order = await res.json()
     setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o))
-    push(`Order ${updated.orderNumber} updated`, "success")
+    push(`Order ${updated.orderNumber ?? updated.id} updated`, "success")
     setEditOrder(null)
   }
 
   // ── STATUS UPDATE (inline from detail) ───────────────────────────────────────
   async function handleStatusChange(order: Order, status: OrderStatus) {
     const res = await fetch(`/api/orders/${order.id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     })
     if (!res.ok) { push("Failed to update status", "error"); return }
     const updated: Order = await res.json()
-    setOrders(prev => prev.map(o => {
-      if (o.id === updated.id) {
-        return { ...o, ...updated };
-      }
-      return o;
-  }));
+    setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o))
     setDetailOrder(updated)
     push(`Status updated to ${status}`, "success")
   }
@@ -356,8 +336,10 @@ const metrics = isOrdersArray
           <p className="text-sm text-gray-500 mt-0.5">Track, manage, and fulfil customer orders across all channels.</p>
         </div>
         {canWrite && (
-          <button onClick={() => setAddOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition shadow-sm">
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition shadow-sm"
+          >
             <Plus size={16} /> New order
           </button>
         )}
@@ -423,20 +405,12 @@ const metrics = isOrdersArray
         {!loading && !isFiltered && (
           <div className="flex items-center gap-2 px-5 py-2.5 border-b border-gray-50 overflow-x-auto">
             {ORDER_STATUSES.map(s => {
-              const count = Array.isArray(orders) 
-              ? orders.filter(o => o.status === s.key).length 
-              : 0;
-              
+              const count = isOrdersArray ? orders.filter(o => o.status === s.key).length : 0
               const active = activePill === s.key
               return (
-                <button key={s.key}
-                  onClick={() => handlePill(s.key)}
+                <button key={s.key} onClick={() => handlePill(s.key)}
                   className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition hover:opacity-80 shrink-0"
-                  style={{
-                    background: s.bg, color: s.text,
-                    outline: active ? `2px solid ${s.dot}` : "none",
-                    outlineOffset: "1px",
-                  }}>
+                  style={{ background: s.bg, color: s.text, outline: active ? `2px solid ${s.dot}` : "none", outlineOffset: "1px" }}>
                   {s.label} <span className="opacity-70">{count}</span>
                 </button>
               )
@@ -464,7 +438,7 @@ const metrics = isOrdersArray
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-175">
+            <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="text-left border-b border-gray-50">
                   {["Order #", "Customer", "Total", "Status", "Date"].map(h => (
@@ -474,7 +448,7 @@ const metrics = isOrdersArray
               </thead>
               <tbody>
                 {orders.map(o => (
-                  <OrderRow key={o.id} order={o} onClick={() => setDetailOrder(o)} />
+                  <OrderRow key={o.id} order={o} onClick={() => handleOpenDetail(o.id)} />
                 ))}
               </tbody>
             </table>
@@ -483,35 +457,26 @@ const metrics = isOrdersArray
 
         {pagination.totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-4 border-t border-gray-50">
-            
             <div className="text-xs text-gray-400">
               Page {pagination.page} of {pagination.totalPages}
             </div>
-
             <div className="flex items-center gap-2">
-              
-              <button
-                disabled={!pagination.hasPrev}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-200 duration-150"
-              >
+              <button disabled={!pagination.hasPrev} onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-200 duration-150">
                 Prev
               </button>
-
-              <button
-                disabled={!pagination.hasNext}
-                onClick={() => setPage(p => p + 1)}
-                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-200 duration-150"
-              >
+              <button disabled={!pagination.hasNext} onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-200 duration-150">
                 Next
               </button>
-
             </div>
           </div>
         )}
       </div>
 
-      {/* Dialogs */}
+      {/* ── Dialogs ─────────────────────────────────────────────────────────── */}
+
+      {/* CREATE */}
       <OrderDialog
         open={addOpen}
         onOpenChange={setAddOpen}
@@ -519,16 +484,18 @@ const metrics = isOrdersArray
         canWrite={canWrite}
       />
 
+      {/* EDIT — passes the order being edited so the dialog pre-populates */}
       <OrderDialog
         open={!!editOrder}
         onOpenChange={v => { if (!v) setEditOrder(null) }}
         onSave={handleUpdate}
         canWrite={canWrite}
+        initialData={editOrder}
       />
 
       <OrderDetailDialog
         order={detailOrder}
-        open={!!detailOrder}
+        open={!!detailOrder || detailLoading}
         onOpenChange={v => { if (!v) setDetailOrder(null) }}
         onEdit={o => { setDetailOrder(null); setEditOrder(o) }}
         onDelete={o => { setDetailOrder(null); setDeleteOrder(o) }}

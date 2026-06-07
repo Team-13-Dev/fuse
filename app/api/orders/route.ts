@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { order, orderItem, customer, product, } from "@/db/schema";
-import { eq, and, ilike, desc, count, getTableColumns } from "drizzle-orm";
+import { order, orderItem, customer, product } from "@/db/schema";
+import { eq, and, ilike, desc, count } from "drizzle-orm";
 import { getBusinessContext } from "@/lib/get-business-context";
 
-// ─── GET /api/orders ──────────────────────────────────────────────
+// ─── GET /api/orders ──────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
     const ctx = await getBusinessContext(req);
@@ -66,9 +66,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ─── POST /api/orders ─────────────────────────────────────────────
-// Roles: owner, manager
-// Creates a new order with items, validates customer & products
+// ─── POST /api/orders ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const ctx = await getBusinessContext(req);
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -113,50 +111,63 @@ export async function POST(req: NextRequest) {
     const [prod] = await db.select().from(product).where(eq(product.id, productId)).limit(1);
     if (!prod) return NextResponse.json({ error: `Product ${productId} not found` }, { status: 404 });
 
-    const lineTotal = quantity * Number(unitPrice) - Number(itemDiscount || 0);
-    total += lineTotal;
+    total += quantity * Number(unitPrice) - Number(itemDiscount || 0);
 
     orderItemsData.push({
       productId,
       quantity,
-      unitPrice: String(unitPrice),
+      unitPrice:    String(unitPrice),
       itemDiscount: itemDiscount ? String(itemDiscount) : "0",
-      attributes: attributes || null,
+      attributes:   attributes || null,
     });
   }
 
   total -= Number(orderDiscount || 0);
   if (total < 0) total = 0;
 
-  // Insert order (decimal fields as strings)
+  // ── Insert order ─────────────────────────────────────────────────────────────
   const [createdOrder] = await db.insert(order).values({
     customerId,
-    businessId: ctx.businessId,
-    total: String(total), 
-    status: "pending",
-    orderVoucher: orderVoucher || null,
-    orderDiscount: orderDiscount ? String(orderDiscount) : "0", 
-    address: address || null,
+    businessId:    ctx.businessId,
+    total:         String(total),
+    status:        "pending",
+    orderVoucher:  orderVoucher  || null,
+    orderDiscount: orderDiscount ? String(orderDiscount) : "0",
+    address:       address       || null,
   }).returning();
 
-  //Fetch the order joined with the customer details
-  const orderWithCustomer = await db.select({
-    ...getTableColumns(order),
-    customerName: customer.fullName,
-    customerEmail: customer.email,
-  })
-  .from(order)
-  .leftJoin(customer, eq(order.customerId, customer.id))
-  .where(eq(order.id, createdOrder.id))
-  .then(res => res[0]); 
-
+  // ── Insert items BEFORE fetching the response ────────────────────────────────
   for (const oi of orderItemsData) {
-    await db.insert(orderItem).values({
-      ...oi,
-      orderId: createdOrder.id,
-    });
+    await db.insert(orderItem).values({ ...oi, orderId: createdOrder.id });
   }
 
-  return NextResponse.json(orderWithCustomer, { status: 201 });
-}
+  // ── Return order + customer + items ──────────────────────────────────────────
+  const [orderWithCustomer] = await db
+    .select({
+      id:            order.id,
+      businessId:    order.businessId,
+      status:        order.status,
+      total:         order.total,
+      createdAt:     order.createdAt,
+      customerId:    order.customerId,
+      customerName:  customer.fullName,
+      customerEmail: customer.email,
+      customerPhone: customer.phoneNumber,
+    })
+    .from(order)
+    .leftJoin(customer, eq(order.customerId, customer.id))
+    .where(eq(order.id, createdOrder.id));
 
+  const createdItems = await db
+    .select({
+      productId: orderItem.productId,
+      name:      product.name,
+      quantity:  orderItem.quantity,
+      unitPrice: orderItem.unitPrice,
+    })
+    .from(orderItem)
+    .leftJoin(product, eq(orderItem.productId, product.id))
+    .where(eq(orderItem.orderId, createdOrder.id));
+
+  return NextResponse.json({ ...orderWithCustomer, items: createdItems }, { status: 201 });
+}

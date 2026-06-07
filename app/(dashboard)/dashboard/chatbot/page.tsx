@@ -52,19 +52,17 @@ export default function FuseChat() {
   ];
   setMessages(nextMessages);
   setIsLoading(true);
-
-  console.log(businessId);
   try {
-    const res = await fetch("https://web-production-3f0f2.up.railway.app/api/v1/chat", {
+    const res = await fetch("https://chatbot-production-d2f4.up.railway.app/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        businessId: businessId, // Now safely available from state
+        business_id: businessId,
         message: userMessage,
-        history: messages, // Send existing history so LLM maintains context
+        history: messages,
       }),
     });
-    
+        
     if (!res.ok) throw new Error("Server error");
 
     const data = await res.json();  
