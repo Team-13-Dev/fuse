@@ -99,7 +99,7 @@ export default function SalesForecastHub() {
 
       // 2. POST to Railway and read the SSE stream
       const forecastRes = await fetch(
-        "http://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations",
+        "https://web-production-3f0f2.up.railway.app/api/v1/forecast-recommendations",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
