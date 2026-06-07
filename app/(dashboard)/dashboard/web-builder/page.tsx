@@ -14,15 +14,8 @@ import RenderedBlock from "./components/RenderedBlock";
 import { withAlpha } from "./helpers/ColorHelpers";
 import CanvasBlock, { DEFAULT_ACCENT, DEFAULT_BG } from "./components/CanvasBlock";
 import PagesList from "./components/PageList";
+import { BlockType } from "./WebBuilderTypes";
 
-type BlockType =
-  | "header"
-  | "hero"
-  | "products"
-  | "contact"
-  | "footer"
-  | "testimonials"
-  | "productList";
 
 type BlockTextMap = typeof DEFAULT_TEXT;
 
@@ -64,7 +57,10 @@ const BLOCK_DEFS : {
   { type: "contact",      label: "Contact",       icon: List,          description: "Contact form" , category: ["landing"]},
   { type: "footer",       label: "Footer",        icon: AlignJustify,  description: "Page footer", category: ["landing", "products", "cart"]},
   { type: "testimonials", label: "Testimonials",  icon: MessageSquare, description: "Customer reviews", category: ["landing"]},
-  { type: "productList", label: "Product List", icon: List, description: "Product List", category: ["landing", "products", "cart"]}
+  { type: "productList", label: "Product List", icon: List, description: "Product List", category: ["landing", "products", "cart"]},
+  { type: "checkoutForm", label: "Checkout Form", icon: List, description: "Checkout Form", category: ["cart"]},
+  { type: "orderReview", label: "Order Review", icon: List, description: "Order Review", category: ["cart"]},
+  { type: "orderConfirmation", label: "Order Confirmation", icon: List, description: "Order Confirmation", category: [ "cart"]}
 ];
 
 // ── API helpers ───────────────────────────────────────────────────────────────

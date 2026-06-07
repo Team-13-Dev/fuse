@@ -1,146 +1,70 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { lighten, withAlpha } from "../helpers/ColorHelpers";
+import { withAlpha } from "../helpers/ColorHelpers";
+import { ChevronDown } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type TopProduct = {
+  id:           string;
+  name:         string;
+  description:  string | null;
+  price:        string;
+  imagesUrl:    string[] | null;
+  stock:        number | null;
+  clusterName:  string | null;
+  totalRevenue: number;
+  totalSold:    number;
+};
 
-export interface ProductRow {
-  product_id: string;
-  cluster: number;
-  cluster_name: "Fast Movers" | "Balanced Performance" | string;
-  job_id: string;
-  updated_at: string;
-  // extend with any extra columns your table has
-  [key: string]: unknown;
-}
-
-interface DynamicProductsBlockProps {
-  /** How many products to show (starting from Fast Movers, then others) */
-  count: number;
-  /** Accent colour forwarded from the parent builder */
-  accentColor: string;
-  /** Background colour forwarded from the parent builder */
-  bgColor: string;
-  /** Section label override – defaults to "Featured Products" */
-  sectionLabel?: string;
-  /**
-   * Async function that fetches products for a given businessId.
-   * Swap this out for your real API/Supabase/React-Query call.
-   *
-   * The component sorts the results so that cluster_name === "Fast Movers"
-   * rows come first, then fills up to `count` with the remaining rows.
-   */
-  fetchProducts?: (businessId: string) => Promise<ProductRow[]>;
-}
-
-// ─── Default mock fetcher (replace with your real data layer) ─────────────────
-
-async function defaultFetchProducts(count: string): Promise<ProductRow[]> {
-  const res = await fetch(`/api/products/fetch-top/${count}`);
-  const data = await res.json();
-  console.log(data);
-
-  return [
-    { product_id: "p-001", cluster: 1, cluster_name: "Fast Movers",          job_id: "j-1", updated_at: "2026-04-28", name: "Velocity Pro",    desc: "Top-selling, high-turn item",  price: "$49" },
-    { product_id: "p-002", cluster: 1, cluster_name: "Fast Movers",          job_id: "j-1", updated_at: "2026-04-28", name: "Rapid Essentials", desc: "Fast-moving staple product",  price: "$29" },
-    { product_id: "p-003", cluster: 1, cluster_name: "Fast Movers",          job_id: "j-1", updated_at: "2026-04-28", name: "QuickSell Bundle", desc: "High-demand bundle offer",    price: "$79" },
-    { product_id: "p-004", cluster: 0, cluster_name: "Balanced Performance", job_id: "j-1", updated_at: "2026-04-28", name: "Steady Growth",   desc: "Consistent revenue driver",  price: "$59" },
-    { product_id: "p-005", cluster: 0, cluster_name: "Balanced Performance", job_id: "j-1", updated_at: "2026-04-28", name: "Core Value",      desc: "Reliable margin contributor", price: "$39" },
-  ];
-}
-
-// ─── Colour helpers (duplicated here so the file is self-contained) ───────────
-
-function clusterBadgeStyle(
-  clusterName: string,
-  accentColor: string,
-  accentBorder: string,
-  accentSoft: string
-) {
-  if (clusterName === "Fast Movers") {
-    return {
-      background: accentSoft,
-      border: `1px solid ${accentBorder}`,
-      color: accentColor,
-    };
-  }
-  return {
-    background: "#f1f5f9",
-    border: "1px solid #e2e8f0",
-    color: "#64748b",
-  };
-}
-
-// ─── Skeleton card ────────────────────────────────────────────────────────────
-
-function SkeletonCard({ bgColor }: { bgColor: string }) {
-  return (
-    <div
-      style={{
-        background: bgColor,
-        border: "1px solid #e2e8f0",
-        borderRadius: 9,
-        padding: 14,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      {[100, 60, 80, 40].map((w, i) => (
-        <div
-          key={i}
-          style={{
-            height: i === 0 ? 28 : 8,
-            width: i === 0 ? 28 : `${w}%`,
-            borderRadius: i === 0 ? 7 : 4,
-            background: "#e2e8f0",
-            animation: "pulse 1.5s ease-in-out infinite",
-          }}
-        />
-      ))}
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+// Badge styling per segment
+const SEGMENT_BADGE: Record<string, { bg: string; border: string; color: string; label: string }> = {
+  "Premium Stars": {
+    bg: "#fef9c3", border: "#fde047", color: "#854d0e", label: "★ Premium Stars",
+  },
+  "Fast Movers": {
+    bg: "", border: "", color: "", label: "⚡ Fast Movers",   // filled dynamically with accent
+  },
+  "Balanced Performance": {
+    bg: "#f0fdf4", border: "#86efac", color: "#166534", label: "◎ Balanced",
+  },
+};
 
 export default function DynamicProductsBlock({
-  count,
   accentColor,
   bgColor,
-  sectionLabel = "Featured Products",
-  fetchProducts = defaultFetchProducts,
-}: DynamicProductsBlockProps) {
-  const [products, setProducts] = useState<ProductRow[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  sectionLabel,
+  displayMode,
+}: {
+  accentColor:  string;
+  bgColor:      string;
+  sectionLabel: string;
+  displayMode:  "grid" | "list";
+}) {
+  const [count,    setCount]    = useState(3);
+  const [products, setProducts] = useState<TopProduct[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
 
-  // Derived colour tokens (mirrors RenderedBlock conventions)
   const accentSoft   = withAlpha(accentColor, 0.08);
-  const accentMid    = withAlpha(accentColor, 0.15);
   const accentBorder = withAlpha(accentColor, 0.25);
+  const accentMid    = withAlpha(accentColor, 0.15);
+
+  // Fill accent-dependent Fast Movers badge
+  SEGMENT_BADGE["Fast Movers"].bg     = accentSoft;
+  SEGMENT_BADGE["Fast Movers"].border = accentBorder;
+  SEGMENT_BADGE["Fast Movers"].color  = accentColor;
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-
-    fetchProducts(count.toString())
-      .then((rows) => {
-        // Sort: Fast Movers first, then everything else
-        const sorted = [
-          ...rows.filter((r) => r.cluster_name === "Fast Movers"),
-          ...rows.filter((r) => r.cluster_name !== "Fast Movers"),
-        ];
-        // Slice to the requested count
-        setProducts(sorted.slice(0, count));
-      })
-      .catch((err) => setError(err?.message ?? "Failed to load products"))
+    fetch(`/api/products/top?count=${count}`)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => setProducts(data.products ?? []))
+      .catch(e  => setError(e.message))
       .finally(() => setLoading(false));
-  }, [count]); 
+  }, [count]);
 
-  const base: React.CSSProperties = {
+  const base = {
     borderRadius: 10,
     border: "1px solid #e2e8f0",
     background: bgColor,
@@ -148,127 +72,250 @@ export default function DynamicProductsBlock({
     padding: 18,
   };
 
-  // ── Resolve grid columns: 1–2 → stack, 3+ → 3-col ──────────────────────────
-  const cols =
-    products.length === 1
-      ? "1fr"
-      : products.length === 2
-      ? "1fr 1fr"
-      : "repeat(3, 1fr)";
-
-  // ── Error state ──────────────────────────────────────────────────────────────
-  if (error) {
+  function SegmentBadge({ name }: { name: string | null }) {
+    if (!name) return null;
+    const badge = SEGMENT_BADGE[name];
+    if (!badge) return null;
     return (
-      <div style={{ ...base, color: "#ef4444", fontSize: 13 }}>
-        ⚠ {error}
+      <span style={{
+        fontSize: 8, fontWeight: 700, textTransform: "uppercase",
+        letterSpacing: "0.08em", borderRadius: 100, padding: "2px 6px",
+        background: badge.bg, border: `1px solid ${badge.border}`, color: badge.color,
+      }}>
+        {badge.label}
+      </span>
+    );
+  }
+
+  function CountSelector() {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 10, color: "#94a3b8" }}>Show</span>
+        <div style={{ position: "relative" }}>
+          <select
+            value={count}
+            onChange={e => setCount(Math.max(3, parseInt(e.target.value, 10)))}
+            style={{
+              appearance: "none",
+              fontSize: 11, fontWeight: 600, color: "#0f172a",
+              background: accentSoft, border: `1px solid ${accentBorder}`,
+              borderRadius: 6, padding: "3px 22px 3px 8px",
+              cursor: "pointer", outline: "none",
+            }}
+          >
+            {[3, 5, 6, 9, 12].map(n => (
+              <option key={n} value={n}>{n} products</option>
+            ))}
+          </select>
+          <ChevronDown
+            size={10}
+            color={accentColor}
+            style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+          />
+        </div>
       </div>
     );
   }
 
+  const cols = count <= 3 ? 3 : count <= 6 ? 3 : 4;
+
   return (
     <div style={base}>
-      {/* Section label */}
-      <p
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: "#94a3b8",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          marginBottom: 14,
-          margin: "0 0 14px",
-        }}
-      >
-        {sectionLabel}
-      </p>
-
-      {/* Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: loading ? "repeat(3, 1fr)" : cols,
-          gap: 10,
-        }}
-      >
-        {loading
-          ? // Render `count` skeleton cards while fetching
-            Array.from({ length: count }).map((_, i) => (
-              <SkeletonCard key={i} bgColor={bgColor} />
-            ))
-          : products.map((product, i) => {
-              const isFastMover = product.cluster_name === "Fast Movers";
-              const badgeStyle  = clusterBadgeStyle(
-                product.cluster_name,
-                accentColor,
-                accentBorder,
-                accentSoft
-              );
-
-              // Resolve display fields with safe fallbacks
-              const name  = (product.name  as string) ?? product.product_id;
-              const desc  = (product.desc  as string) ?? product.cluster_name;
-              const price = (product.price as string) ?? "—";
-
-              return (
-                <div
-                  key={product.product_id ?? i}
-                  style={{
-                    background: isFastMover ? accentSoft : bgColor,
-                    border: `1px solid ${isFastMover ? accentBorder : "#e2e8f0"}`,
-                    borderRadius: 9,
-                    padding: 14,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
-                  {/* Cluster badge */}
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.1em",
-                      borderRadius: 100,
-                      padding: "3px 8px",
-                      alignSelf: "flex-start",
-                      ...badgeStyle,
-                    }}
-                  >
-                    {isFastMover ? "★ " : ""}
-                    {product.cluster_name}
-                  </span>
-
-                  {/* Icon placeholder */}
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 7,
-                      background: accentMid,
-                      border: `1px solid ${accentBorder}`,
-                    }}
-                  />
-
-                  {/* Name */}
-                  <p style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", margin: 0 }}>
-                    {name}
-                  </p>
-
-                  {/* Description */}
-                  <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>
-                    {desc}
-                  </p>
-
-                  {/* Price */}
-                  <p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "4px 0 0" }}>
-                    {price}
-                    <span style={{ fontSize: 10, fontWeight: 400, color: "#94a3b8" }}>/mo</span>
-                  </p>
-                </div>
-              );
-            })}
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", margin: 0 }}>
+          {sectionLabel}
+        </p>
+        <CountSelector />
       </div>
+
+      {loading && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 100 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>Loading products…</span>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 100 }}>
+          <span style={{ fontSize: 12, color: "#ef4444" }}>Failed to load: {error}</span>
+        </div>
+      )}
+
+      {!loading && !error && displayMode === "grid" && (
+        <div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gap: 16,
+    paddingTop: 8,
+  }}
+>
+  {products.map((p, i) => (
+      <div
+        key={p.id}
+        style={{
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 16,
+          padding: 14,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          transition: "all .25s ease",
+          cursor: "pointer",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "translateY(-3px)";
+          e.currentTarget.style.boxShadow =
+            "0 8px 24px rgba(0,0,0,0.08)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "translateY(0)";
+          e.currentTarget.style.boxShadow =
+            "0 2px 8px rgba(0,0,0,0.04)";
+        }}
+      >
+        {/* Top row */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: "#94a3b8",
+            }}
+          >
+            #{i + 1}
+          </span>
+
+          <SegmentBadge name={p.clusterName} />
+        </div>
+
+        {/* Product */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
+          {p.imagesUrl?.[0] ? (
+            <img
+              src={p.imagesUrl[0]}
+              alt={p.name}
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 12,
+                objectFit: "cover",
+                border: "1px solid #e2e8f0",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 12,
+                background: accentMid,
+                border: `1px solid ${accentBorder}`,
+              }}
+            />
+          )}
+
+          <div style={{ flex: 1 }}>
+            <p
+              style={{
+                margin: 0,
+                fontWeight: 600,
+                fontSize: 14,
+                color: "#0f172a",
+              }}
+            >
+              {p.name}
+            </p>
+
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: 11,
+                color: "#94a3b8",
+              }}
+            >
+              {p.totalSold} units sold
+            </p>
+          </div>
+        </div>
+
+        {/* Bottom stats */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            paddingTop: 10,
+            borderTop: "1px solid #f1f5f9",
+          }}
+        >
+          <div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 11,
+                color: "#94a3b8",
+              }}
+            >
+              Price
+            </p>
+
+            <p
+              style={{
+                margin: "2px 0 0",
+                fontSize: 15,
+                fontWeight: 700,
+                color: "#0f172a",
+              }}
+            >
+              EGP {parseFloat(p.price).toFixed(2)}
+            </p>
+          </div>
+        </div>
+      </div>
+        ))}
+      </div>
+      )}
+
+      {!loading && !error && displayMode === "list" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {products.map((p, i) => (
+            <div key={p.id} style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: "#f8fafc", border: "1px solid #e2e8f0",
+              borderRadius: 9, padding: "10px 12px",
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", minWidth: 18 }}>#{i + 1}</span>
+              {p.imagesUrl?.[0] ? (
+                <img src={p.imagesUrl[0]} alt={p.name}
+                  style={{ width: 36, height: 36, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 36, height: 36, borderRadius: 7, background: accentMid, border: `1px solid ${accentBorder}`, flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", margin: 0 }}>{p.name}</p>
+                  <SegmentBadge name={p.clusterName} />
+                </div>
+                <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>{p.totalSold} units sold</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
